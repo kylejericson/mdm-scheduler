@@ -1,0 +1,395 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h4 mb-3">{{ 'Edit' if job else 'New' }} schedule</h1>
+
+<form method="post" action="/jobs" class="row g-3" style="max-width: 52rem">
+  <input type="hidden" name="job_id" value="{{ job.id if job else '' }}">
+
+  <div class="col-md-6">
+    <label class="form-label" for="name">Schedule name</label>
+    <input class="form-control" id="name" name="name" required value="{{ job.name if job else '' }}">
+  </div>
+
+  <div class="col-md-6">
+    <label class="form-label" for="instance_id">MDM instance</label>
+    <select class="form-select" id="instance_id" name="instance_id" required>
+      {% for inst in instances %}
+        <option value="{{ inst.id }}" {% if job and job.instance_id == inst.id %}selected{% endif %}>
+          {{ inst.name }} - {{ inst.vendor_label }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-12">
+    <label class="form-label" for="action">Action</label>
+    <select class="form-select" id="action" name="action" required
+            data-selected="{{ job.action if job else '' }}"></select>
+    <div class="form-text" id="vendor-note"></div>
+  </div>
+
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Target</span>
+        <button class="btn btn-sm btn-outline-primary" type="button" onclick="loadAll(true)">Reload from MDM</button>
+      </div>
+      <div class="card-body row g-3">
+
+        <div class="col-md-8" data-need="policy" hidden>
+          <label class="form-label" for="policy_id">Policy</label>
+          <select class="form-select" id="policy_id" name="policy_id" data-kind="policies"
+                  data-selected="{{ job.params.get('policy_id', '') if job else '' }}"></select>
+        </div>
+
+        <div class="col-md-8" data-need="profile" hidden>
+          <label class="form-label" for="profile_id">Configuration profile</label>
+          <select class="form-select" id="profile_id" name="profile_id"
+                  data-selected="{{ job.params.get('profile_id', '') if job else '' }}"></select>
+        </div>
+
+        <div class="col-md-8" data-need="group" hidden>
+          <label class="form-label" for="group_id">Group</label>
+          <select class="form-select" id="group_id" name="group_id"
+                  data-selected="{{ job.params.get('group_id', '') if job else '' }}"></select>
+        </div>
+
+        <div class="col-md-8" data-need="command" hidden>
+          <label class="form-label" for="command">MDM command</label>
+          <select class="form-select" id="command" name="command"
+                  data-selected="{{ job.params.get('command', '') if job else '' }}"></select>
+        </div>
+
+        <div class="col-md-4" data-need="target_type" hidden>
+          <label class="form-label" for="target_type">Send to</label>
+          <select class="form-select" id="target_type" name="target_type" onchange="applyNeeds()">
+            {% set tt = job.params.get('target_type', 'group') if job else 'group' %}
+            <option value="group" {% if tt == 'group' %}selected{% endif %}>Group (expanded at run time)</option>
+            <option value="blueprint" {% if tt == 'blueprint' %}selected{% endif %}>Blueprint (expanded at run time)</option>
+            <option value="devices" {% if tt == 'devices' %}selected{% endif %}>Specific devices</option>
+          </select>
+        </div>
+
+        <div class="col-md-8" data-need="devices" hidden>
+          <label class="form-label" for="device_ids">Jamf IDs or serial numbers</label>
+          <input class="form-control mono" id="device_ids" name="device_ids"
+                 placeholder="30, C02X1234JGH5, FVFXQ12ABCDE"
+                 value="{{ job.params.get('device_ids', '') if job else '' }}">
+          <div class="form-text">
+            Comma separated, mixed freely. Digits are read as Jamf IDs, anything else as a serial.
+            Resolved against inventory when the job runs.
+          </div>
+        </div>
+
+        <div class="col-md-4" data-need="pin" hidden>
+          <label class="form-label" for="pin">6-digit PIN</label>
+          <input class="form-control mono" id="pin" name="pin" maxlength="6" pattern="[0-9]{6}"
+                 value="{{ job.params.get('pin', '') if job else '' }}">
+          <div class="form-text">Required for computer Lock / Wipe.</div>
+        </div>
+
+        {# ------------------------------------------------------------ Iru #}
+        <div class="col-md-8" data-need="iru_serials" hidden>
+          <label class="form-label" for="serials">Serial numbers</label>
+          <input class="form-control mono" id="serials" name="serials"
+                 placeholder="C02X1234JGH5, FVFXQ12ABCDE"
+                 value="{{ job.params.get('serials', '') if job else '' }}">
+          <div class="form-text">Comma separated. Iru device UUIDs also work. Resolved when the job runs.</div>
+        </div>
+
+        <div class="col-md-8" data-need="iru_source_blueprint" hidden>
+          <label class="form-label" for="source_blueprint_id">Devices currently in blueprint</label>
+          <select class="form-select" id="source_blueprint_id" name="source_blueprint_id"
+                  data-selected="{{ job.params.get('source_blueprint_id', '') if job else '' }}"></select>
+          <div class="form-text">Membership is read when the job fires.</div>
+        </div>
+
+        <div class="col-md-8" data-need="iru_blueprint" hidden>
+          <label class="form-label" for="blueprint_id">Move to blueprint</label>
+          <select class="form-select" id="blueprint_id" name="blueprint_id"
+                  data-selected="{{ job.params.get('blueprint_id', '') if job else '' }}"></select>
+          <div class="form-text">
+            Iru devices always belong to exactly one blueprint, so moving is the way to take a Mac
+            out of one - devices already here are left alone.
+          </div>
+        </div>
+
+        <div class="col-md-4" data-need="iru_phone" hidden>
+          <label class="form-label" for="phone">Phone number</label>
+          <input class="form-control mono" id="phone" name="phone"
+                 value="{{ job.params.get('phone', '') if job else '' }}">
+          <div class="form-text">Optional, shown with Lock / Lost Mode.</div>
+        </div>
+
+        <div class="col-md-4" data-need="iru_username" hidden>
+          <label class="form-label" for="username">Local username</label>
+          <input class="form-control mono" id="username" name="username"
+                 value="{{ job.params.get('username', '') if job else '' }}">
+          <div class="form-text">Required by Unlock Account and Delete User.</div>
+        </div>
+
+        <div class="col-md-4" data-need="iru_device_name" hidden>
+          <label class="form-label" for="device_name">Device name</label>
+          <input class="form-control" id="device_name" name="device_name"
+                 value="{{ job.params.get('device_name', '') if job else '' }}">
+          <div class="form-text">Required by Set Name.</div>
+        </div>
+
+        <div class="col-md-8" data-need="message" hidden>
+          <label class="form-label" for="message">Message</label>
+          <input class="form-control" id="message" name="message"
+                 placeholder="Shown on the lock screen / in Lost Mode"
+                 value="{{ job.params.get('message', '') if job else '' }}">
+          <div class="form-text">Required for Enable Lost Mode; optional on Device Lock.</div>
+        </div>
+
+        <div class="col-12">
+          <div id="load-status" class="small text-secondary"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header">When</div>
+      <div class="card-body row g-3">
+        <div class="col-md-4">
+          <label class="form-label" for="schedule_type">Schedule type</label>
+          <select class="form-select" id="schedule_type" name="schedule_type" onchange="applySchedule()">
+            <option value="once" {% if not job or job.schedule_type == 'once' %}selected{% endif %}>Run once</option>
+            <option value="cron" {% if job and job.schedule_type == 'cron' %}selected{% endif %}>Recurring (cron)</option>
+          </select>
+        </div>
+
+        <div class="col-md-4" id="once-box">
+          <label class="form-label" for="run_at">Date and time</label>
+          <input class="form-control" type="datetime-local" id="run_at" name="run_at"
+                 value="{{ run_at_value }}">
+        </div>
+
+        <div class="col-md-4" id="cron-box">
+          <label class="form-label" for="cron">Cron expression</label>
+          <input class="form-control mono" id="cron" name="cron" placeholder="0 3 * * 1-5"
+                 value="{{ job.cron if job else '' }}">
+          <div class="form-text">m h dom mon dow</div>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label" for="tz">Timezone</label>
+          <select class="form-select" id="tz" name="tz">
+            {% set selected_tz = job.tz if job else default_tz %}
+            {% for zone in timezones %}
+              <option value="{{ zone }}" {% if zone == selected_tz %}selected{% endif %}>{{ zone }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-4 d-flex align-items-end">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="enabled" name="enabled"
+                   {% if not job or job.enabled %}checked{% endif %}>
+            <label class="form-check-label" for="enabled">Enabled</label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 d-flex gap-2">
+    <button class="btn btn-primary" type="submit">Save schedule</button>
+    <a class="btn btn-outline-secondary" href="/">Cancel</a>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ACTION_LIST = {{ actions_list | tojson }};
+const ACTIONS = Object.fromEntries(ACTION_LIST.map(a => [a.key, a]));
+const VENDORS = {{ vendors | tojson }};
+const COMPUTER_COMMANDS = {{ computer_commands | tojson }};
+const MOBILE_COMMANDS = {{ mobile_commands | tojson }};
+const IRU_COMMANDS = {{ iru_commands | tojson }};
+const IRU_COMMANDS_SPEC = {{ iru_command_specs | tojson }};
+const cache = {};
+
+function vendor() {
+  return VENDORS[document.getElementById('instance_id').value] || 'jamf';
+}
+
+function actionSelect() { return document.getElementById('action'); }
+
+// The action menu is rebuilt from the selected instance's vendor, so a Jamf
+// action can never be saved against an Iru instance or the other way round.
+function fillActions() {
+  const select = actionSelect();
+  const want = select.dataset.selected || select.value;
+  const current = vendor();
+  select.innerHTML = '';
+  ACTION_LIST
+    .filter(meta => meta.vendor === current)
+    .forEach(meta => {
+      const opt = document.createElement('option');
+      opt.value = meta.key;
+      opt.textContent = meta.label;
+      if (meta.key === want) opt.selected = true;
+      select.appendChild(opt);
+    });
+  delete select.dataset.selected;
+  document.getElementById('vendor-note').textContent =
+    current === 'iru' ? 'Iru instance - blueprints and device actions.'
+                      : 'Jamf Pro instance - policies, profile scope and MDM commands.';
+}
+
+function needsOf() {
+  return (ACTIONS[actionSelect().value] || {}).needs || [];
+}
+
+function profileKind(needs) {
+  if (needs.includes('osx_profile')) return 'osx_profiles';
+  if (needs.includes('mobile_profile')) return 'mobile_profiles';
+  return null;
+}
+
+function groupKind(needs) {
+  if (needs.includes('computer_group') || needs.includes('computer_command')) return 'computer_groups';
+  if (needs.includes('mobile_group') || needs.includes('mobile_command')) return 'mobile_groups';
+  return null;
+}
+
+function applyNeeds() {
+  const needs = needsOf();
+  const isIru = vendor() === 'iru';
+  const jamfCommand = needs.includes('computer_command') || needs.includes('mobile_command');
+  const iruCommand = needs.includes('iru_command');
+  const targetType = document.getElementById('target_type').value;
+  const iruSpec = iruCommand ? (IRU_COMMANDS_SPEC[document.getElementById('command').value] || {}) : {};
+
+  const show = {
+    policy: needs.includes('policy'),
+    profile: !!profileKind(needs),
+    group: needs.includes('computer_group') || needs.includes('mobile_group') ||
+           (jamfCommand && targetType === 'group'),
+    command: jamfCommand || iruCommand,
+    target_type: jamfCommand || iruCommand || needs.includes('iru_blueprint_target'),
+    devices: jamfCommand && targetType === 'devices',
+    pin: jamfCommand || (iruCommand && iruSpec.pin),
+    message: jamfCommand || (iruCommand && iruSpec.message),
+    iru_serials: (iruCommand || needs.includes('iru_blueprint_target')) && targetType === 'devices',
+    iru_source_blueprint: (iruCommand || needs.includes('iru_blueprint_target')) && targetType === 'blueprint',
+    iru_blueprint: needs.includes('iru_blueprint_destination'),
+    iru_phone: iruCommand && iruSpec.phone,
+    iru_username: iruCommand && iruSpec.username,
+    iru_device_name: iruCommand && iruSpec.device_name
+  };
+
+  document.querySelectorAll('[data-need]').forEach(el => { el.hidden = !show[el.dataset.need]; });
+
+  // "Send to" offers only the options that vendor understands
+  const tt = document.getElementById('target_type');
+  [...tt.options].forEach(opt => {
+    opt.hidden = isIru ? opt.value === 'group' : opt.value === 'blueprint';
+  });
+  if (isIru && tt.value === 'group') tt.value = 'blueprint';
+  if (!isIru && tt.value === 'blueprint') tt.value = 'group';
+
+  if (jamfCommand || iruCommand) fillCommands(needs, iruCommand);
+  loadAll(false);
+}
+
+function fillCommands(needs, iruCommand) {
+  const select = document.getElementById('command');
+  const source = iruCommand ? IRU_COMMANDS
+    : (needs.includes('computer_command') ? COMPUTER_COMMANDS : MOBILE_COMMANDS);
+  const want = select.dataset.selected || select.value;
+  select.innerHTML = '';
+  Object.entries(source).forEach(([key, label]) => {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = key + ' - ' + label;
+    if (key === want) opt.selected = true;
+    select.appendChild(opt);
+  });
+  delete select.dataset.selected;
+}
+
+async function fetchObjects(kind, force) {
+  const instanceId = document.getElementById('instance_id').value;
+  const cacheKey = instanceId + ':' + kind;
+  if (!force && cache[cacheKey]) return cache[cacheKey];
+  const status = document.getElementById('load-status');
+  status.className = 'small text-secondary';
+  status.textContent = 'Loading ' + kind.replace('_', ' ') + '...';
+  const resp = await fetch('/api/instances/' + instanceId + '/objects?kind=' + kind);
+  const data = await resp.json();
+  if (!data.ok) {
+    status.className = 'small text-danger';
+    status.textContent = data.error || ('Failed to load ' + kind);
+    return [];
+  }
+  status.className = 'small text-success';
+  status.textContent = 'Loaded ' + data.items.length + ' ' + kind.replace('_', ' ') + '.';
+  cache[cacheKey] = data.items;
+  return data.items;
+}
+
+function fillSelect(select, items) {
+  const want = select.dataset.selected || select.value;
+  select.innerHTML = '';
+  const blank = document.createElement('option');
+  blank.value = '';
+  blank.textContent = '-- select --';
+  select.appendChild(blank);
+  items.forEach(item => {
+    const opt = document.createElement('option');
+    opt.value = item.id;
+    opt.textContent = item.name + (item.smart === true ? ' [smart]' : '') +
+      (String(item.id).length < 10 ? ' (id ' + item.id + ')' : '');
+    if (String(item.id) === String(want)) opt.selected = true;
+    select.appendChild(opt);
+  });
+  delete select.dataset.selected;
+}
+
+async function loadAll(force) {
+  const needs = needsOf();
+  if (vendor() === 'iru') {
+    const wantsBlueprints = !document.querySelector('[data-need="iru_blueprint"]').hidden ||
+                            !document.querySelector('[data-need="iru_source_blueprint"]').hidden;
+    if (wantsBlueprints) {
+      const items = await fetchObjects('blueprints', force);
+      if (!document.querySelector('[data-need="iru_blueprint"]').hidden) {
+        fillSelect(document.getElementById('blueprint_id'), items);
+      }
+      if (!document.querySelector('[data-need="iru_source_blueprint"]').hidden) {
+        fillSelect(document.getElementById('source_blueprint_id'), items);
+      }
+    }
+    return;
+  }
+  if (needs.includes('policy') && !document.querySelector('[data-need="policy"]').hidden) {
+    fillSelect(document.getElementById('policy_id'), await fetchObjects('policies', force));
+  }
+  const pk = profileKind(needs);
+  if (pk) fillSelect(document.getElementById('profile_id'), await fetchObjects(pk, force));
+  const gk = groupKind(needs);
+  if (gk && !document.querySelector('[data-need="group"]').hidden) {
+    fillSelect(document.getElementById('group_id'), await fetchObjects(gk, force));
+  }
+}
+
+function applySchedule() {
+  const isCron = document.getElementById('schedule_type').value === 'cron';
+  document.getElementById('cron-box').hidden = !isCron;
+  document.getElementById('once-box').hidden = isCron;
+}
+
+document.getElementById('action').addEventListener('change', applyNeeds);
+document.getElementById('command').addEventListener('change', applyNeeds);
+document.getElementById('instance_id').addEventListener('change', () => { fillActions(); applyNeeds(); });
+applySchedule();
+fillActions();
+applyNeeds();
+</script>
+{% endblock %}

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h4 mb-0">Schedules</h1>
+  <a class="btn btn-primary" href="/jobs/new">New schedule</a>
+</div>
+
+{% if not rows %}
+  <div class="alert alert-secondary">No schedules yet. Add a Jamf Pro instance, then create a schedule.</div>
+{% else %}
+<div class="table-responsive">
+<table class="table table-hover align-middle">
+  <thead>
+    <tr>
+      <th>#</th><th>Name</th><th>Instance</th><th>Action</th><th>Schedule</th>
+      <th>Next run</th><th>Last run</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for row in rows %}
+    {% set job = row.job %}
+    <tr>
+      <td class="text-secondary">{{ job.id }}</td>
+      <td>
+        <div class="fw-semibold">{{ job.name }}</div>
+        <div class="small text-secondary params mono">{{ row.summary }}</div>
+      </td>
+      <td>{{ row.instance }}</td>
+      <td>{{ row.action_label }}</td>
+      <td>
+        {% if job.schedule_type == 'cron' %}
+          <span class="badge text-bg-info">cron</span> <code>{{ job.cron }}</code>
+        {% else %}
+          <span class="badge text-bg-secondary">once</span> {{ job.run_at | localtime(job.tz) }}
+        {% endif %}
+        <div class="small text-secondary">{{ job.tz }}</div>
+      </td>
+      <td>
+        {% if not job.enabled %}
+          <span class="badge text-bg-warning">paused</span>
+        {% elif row.next_run %}
+          {{ row.next_run | localtime(job.tz) }}
+        {% else %}
+          <span class="text-secondary">-</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if job.last_status == 'success' %}
+          <span class="badge text-bg-success">success</span>
+        {% elif job.last_status == 'error' %}
+          <span class="badge text-bg-danger">error</span>
+        {% else %}
+          <span class="text-secondary">never</span>
+        {% endif %}
+        {% if job.last_run %}
+          <div class="small text-secondary">{{ job.last_run | localtime(job.tz) }}</div>
+        {% endif %}
+      </td>
+      <td class="text-nowrap">
+        <form method="post" action="/jobs/{{ job.id }}/run" class="d-inline">
+          <button class="btn btn-sm btn-outline-primary" type="submit">Run now</button>
+        </form>
+        <form method="post" action="/jobs/{{ job.id }}/toggle" class="d-inline">
+          <button class="btn btn-sm btn-outline-secondary" type="submit">{{ 'Pause' if job.enabled else 'Resume' }}</button>
+        </form>
+        <a class="btn btn-sm btn-outline-secondary" href="/jobs/{{ job.id }}/edit">Edit</a>
+        <a class="btn btn-sm btn-outline-secondary" href="/jobs/{{ job.id }}/logs">Logs</a>
+        <form method="post" action="/jobs/{{ job.id }}/delete" class="d-inline"
+              onsubmit="return confirm('Delete schedule {{ job.name }}?')">
+          <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

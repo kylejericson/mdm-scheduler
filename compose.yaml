@@ -1,0 +1,22 @@
+# Deploy with a prebuilt image. Requires a .env file - see .env.example.
+# To build from source instead: docker compose -f compose.dev.yaml up -d --build
+services:
+  mdm-scheduler:
+    image: ghcr.io/__YOUR_GH_HANDLE__/mdm-scheduler:latest
+    container_name: mdm-scheduler
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      - mdm_scheduler_data:/data
+    environment:
+      SECRET_KEY: "${SECRET_KEY:?set SECRET_KEY in .env - openssl rand -hex 32}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}"
+      TZ: "${TZ:-UTC}"
+      DATA_DIR: /data
+    restart: unless-stopped
+
+volumes:
+  mdm_scheduler_data:
+    # Upgrading from jamf-scheduler? Set DATA_VOLUME in .env to the existing
+    # volume name (docker volume ls) to keep your instances and history.
+    name: ${DATA_VOLUME:-mdm_scheduler_data}

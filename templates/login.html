@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in &middot; {{ brand.title }}</title>
+  {% include "_theme.html" %}
+  {% include "_assets.html" %}
+  <style>
+    .brand-logo { max-height: 64px; max-width: 240px; width: auto; }
+    {% if brand.accent %}
+    .btn-primary { --bs-btn-bg: {{ brand.accent }}; --bs-btn-border-color: {{ brand.accent }};
+                   --bs-btn-hover-bg: {{ brand.accent }}; --bs-btn-hover-border-color: {{ brand.accent }}; }
+    a { color: {{ brand.accent }}; }
+    {% endif %}
+  </style>
+</head>
+<body class="d-flex align-items-center" style="min-height:100vh">
+<div class="container" style="max-width: 24rem">
+  <div class="text-center mb-4">
+    {% if brand.logo_file %}
+      <img class="brand-logo mb-3" src="/branding/logo" alt="{{ brand.org_name or 'Logo' }}">
+    {% endif %}
+    <h1 class="h4 mb-0">{{ brand.title }}</h1>
+  </div>
+
+  {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+
+  <form method="post" action="/login">
+    <div class="mb-3">
+      <label class="form-label" for="password">Password</label>
+      <input class="form-control" type="password" id="password" name="password" autofocus required>
+    </div>
+    <button class="btn btn-primary w-100" type="submit">Sign in</button>
+  </form>
+
+  <div class="d-flex justify-content-between align-items-center mt-3">
+    <a class="small" href="/help">Setup &amp; API requirements</a>
+    {% include "_theme_toggle.html" %}
+  </div>
+</div>
+</body>
+</html>

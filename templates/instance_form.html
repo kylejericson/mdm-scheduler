@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h4 mb-3">{{ 'Edit' if instance else 'Add' }} Jamf Pro instance</h1>
+
+<form method="post" action="/instances" class="row g-3" style="max-width: 44rem">
+  <input type="hidden" name="instance_id" value="{{ instance.id if instance else '' }}">
+
+  <div class="col-md-4">
+    <label class="form-label" for="name">Display name</label>
+    <input class="form-control" id="name" name="name" required value="{{ instance.name if instance else '' }}">
+  </div>
+
+  <div class="col-md-3">
+    <label class="form-label" for="vendor">MDM</label>
+    <select class="form-select" id="vendor" name="vendor" onchange="toggleVendor()">
+      <option value="jamf" {% if not instance or instance.vendor != 'iru' %}selected{% endif %}>Jamf Pro</option>
+      <option value="iru" {% if instance and instance.vendor == 'iru' %}selected{% endif %}>Iru</option>
+    </select>
+  </div>
+
+  <div class="col-md-5">
+    <label class="form-label" for="base_url">Base URL</label>
+    <input class="form-control" id="base_url" name="base_url" required
+           value="{{ instance.base_url if instance else '' }}">
+    <div class="form-text" id="base_url_hint"></div>
+  </div>
+
+  <div class="col-12 vendor-jamf">
+    <label class="form-label" for="auth_type">Authentication</label>
+    <select class="form-select" id="auth_type" name="auth_type" onchange="toggleAuth()">
+      <option value="client" {% if not instance or instance.auth_type == 'client' %}selected{% endif %}>
+        API Client (client credentials) - recommended
+      </option>
+      <option value="user" {% if instance and instance.auth_type == 'user' %}selected{% endif %}>
+        Jamf Pro user account (username / password)
+      </option>
+    </select>
+  </div>
+
+  <div class="col-md-6 vendor-iru">
+    <label class="form-label" for="api_token">API token</label>
+    <input class="form-control" type="password" id="api_token" name="api_token"
+           placeholder="{{ 'unchanged' if instance and instance.api_token_enc else '' }}">
+    <div class="form-text">Iru &rarr; Settings &rarr; Access &rarr; API tokens. Scope it to only what you schedule.</div>
+  </div>
+
+  <div class="col-md-6 auth-client vendor-jamf">
+    <label class="form-label" for="client_id">Client ID</label>
+    <input class="form-control mono" id="client_id" name="client_id" value="{{ instance.client_id if instance else '' }}">
+  </div>
+  <div class="col-md-6 auth-client vendor-jamf">
+    <label class="form-label" for="client_secret">Client secret</label>
+    <input class="form-control" type="password" id="client_secret" name="client_secret"
+           placeholder="{{ 'unchanged' if instance and instance.client_secret_enc else '' }}">
+  </div>
+
+  <div class="col-md-6 auth-user vendor-jamf">
+    <label class="form-label" for="username">Username</label>
+    <input class="form-control" id="username" name="username" value="{{ instance.username if instance else '' }}">
+  </div>
+  <div class="col-md-6 auth-user vendor-jamf">
+    <label class="form-label" for="password">Password</label>
+    <input class="form-control" type="password" id="password" name="password"
+           placeholder="{{ 'unchanged' if instance and instance.password_enc else '' }}">
+  </div>
+
+  <div class="col-12">
+    <label class="form-label" for="notes">Notes</label>
+    <input class="form-control" id="notes" name="notes" value="{{ instance.notes if instance else '' }}">
+  </div>
+
+  <div class="col-12 form-check ms-1">
+    <input class="form-check-input" type="checkbox" id="verify_ssl" name="verify_ssl"
+           {% if not instance or instance.verify_ssl %}checked{% endif %}>
+    <label class="form-check-label" for="verify_ssl">Verify TLS certificate</label>
+  </div>
+
+  <div class="col-12 d-flex gap-2">
+    <button class="btn btn-primary" type="submit">Save</button>
+    <a class="btn btn-outline-secondary" href="/instances">Cancel</a>
+  </div>
+</form>
+
+<div class="alert alert-secondary mt-4 vendor-jamf" style="max-width: 44rem">
+  <div class="fw-semibold mb-1">Minimum Jamf Pro API Role privileges</div>
+  <div class="small">
+    Read/Update <em>Policies</em>, Read/Update <em>macOS</em> and <em>iOS Configuration Profiles</em>,
+    Read <em>Smart</em> and <em>Static Computer/Mobile Device Groups</em>, Read <em>Computers</em>/<em>Mobile Devices</em>,
+    <em>View MDM command information in Jamf Pro API</em>, and the per-command Send privileges.
+    <a href="/help">Full list</a>.
+  </div>
+</div>
+
+<div class="alert alert-secondary mt-4 vendor-iru" style="max-width: 44rem">
+  <div class="fw-semibold mb-1">Iru API token permissions</div>
+  <div class="small">
+    Enable the endpoints you schedule under <em>Settings &rarr; Access &rarr; API tokens</em>:
+    <em>Device list</em>, <em>Device details</em>, <em>Update device</em> (blueprint moves),
+    <em>Blueprint list</em>, and the device actions you use (lock, erase, restart, and so on).
+    <a href="/help">Full list</a>.
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const BASE_URL_HINTS = {
+  jamf: 'https://yourorg.jamfcloud.com - the canonical host, no trailing path.',
+  iru: 'https://yourtenant.api.kandji.io (US) or .api.eu.kandji.io (EU). Iru tenants may also use api.iru.com - copy whatever Settings > Access shows.'
+};
+
+function toggleAuth() {
+  const isClient = document.getElementById('auth_type').value === 'client';
+  const isJamf = document.getElementById('vendor').value === 'jamf';
+  document.querySelectorAll('.auth-client').forEach(el => el.hidden = !(isClient && isJamf));
+  document.querySelectorAll('.auth-user').forEach(el => el.hidden = !(!isClient && isJamf));
+}
+
+function toggleVendor() {
+  const vendor = document.getElementById('vendor').value;
+  document.querySelectorAll('.vendor-jamf').forEach(el => el.hidden = vendor !== 'jamf');
+  document.querySelectorAll('.vendor-iru').forEach(el => el.hidden = vendor !== 'iru');
+  document.getElementById('base_url_hint').textContent = BASE_URL_HINTS[vendor];
+  document.getElementById('base_url').placeholder =
+    vendor === 'iru' ? 'https://yourtenant.api.kandji.io' : 'https://yourorg.jamfcloud.com';
+  toggleAuth();
+}
+toggleVendor();
+</script>
+{% endblock %}

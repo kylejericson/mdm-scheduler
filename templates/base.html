@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ brand.title }}{% endblock %}</title>
+  {% include "_theme.html" %}
+  {% include "_assets.html" %}
+  <style>
+    body { padding-bottom: 4rem; }
+    .navbar-brand { font-weight: 600; letter-spacing: .01em; display: flex; align-items: center; gap: .5rem; }
+    .brand-logo { max-height: 30px; max-width: 160px; width: auto; }
+    code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .875em; }
+    .table td, .table th { vertical-align: middle; }
+    .params { max-width: 30rem; word-break: break-word; }
+    {% if brand.accent %}
+    :root { --bs-primary: {{ brand.accent }}; --bs-link-color: {{ brand.accent }}; }
+    .btn-primary { --bs-btn-bg: {{ brand.accent }}; --bs-btn-border-color: {{ brand.accent }};
+                   --bs-btn-hover-bg: {{ brand.accent }}; --bs-btn-hover-border-color: {{ brand.accent }};
+                   --bs-btn-active-bg: {{ brand.accent }}; }
+    .btn-outline-primary { --bs-btn-color: {{ brand.accent }}; --bs-btn-border-color: {{ brand.accent }};
+                           --bs-btn-hover-bg: {{ brand.accent }}; --bs-btn-hover-border-color: {{ brand.accent }}; }
+    a { color: {{ brand.accent }}; }
+    {% endif %}
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom mb-4">
+  <div class="container">
+    <a class="navbar-brand text-nowrap" href="/">
+      {% if brand.logo_file %}
+        {# the logo already carries the org name, so don't repeat it #}
+        <img class="brand-logo" src="/branding/logo" alt="{{ brand.org_name or 'Logo' }}">
+        <span class="d-none d-md-inline">MDM Scheduler</span>
+      {% else %}
+        <span>{{ brand.title }}</span>
+      {% endif %}
+    </a>
+    <div class="navbar-nav flex-row me-auto text-nowrap">
+      <a class="nav-link px-2" href="/">Schedules</a>
+      <a class="nav-link px-2" href="/instances">Instances</a>
+      <a class="nav-link px-2" href="/settings">Branding</a>
+      <a class="nav-link px-2" href="/help">Help</a>
+    </div>
+    <div class="d-flex align-items-center flex-shrink-0 gap-2">
+      <span class="navbar-text small text-nowrap d-none d-xl-inline">v{{ app_version }} &middot; {{ default_tz }}</span>
+      {% include "_theme_toggle.html" %}
+      <a class="btn btn-sm btn-outline-secondary text-nowrap" href="/logout">Log out</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+  {% if flash %}
+    <div class="alert alert-{{ flash.level }} alert-dismissible" role="alert">
+      {{ flash.message }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+  {% endif %}
+  {% block content %}{% endblock %}
+</div>
+
+{% include "_assets_js.html" %}
+{% block scripts %}{% endblock %}
+</body>
+</html>

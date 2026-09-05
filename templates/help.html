@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+{% block title %}Help &middot; {{ brand.title }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <div>
+    <h1 class="h4 mb-1">Setup &amp; API requirements</h1>
+    <div class="text-secondary small">What to create in your MDM before this tool can do anything.</div>
+  </div>
+  {% if not signed_in %}<a class="btn btn-outline-secondary" href="/login">Sign in</a>{% endif %}
+</div>
+
+{% if brand.support_note %}
+<div class="alert alert-info"><strong>Local note:</strong> {{ brand.support_note }}</div>
+{% endif %}
+
+<div class="alert alert-warning">
+  This tool can lock and wipe managed devices on a schedule. Scope its API Role to
+  only the actions you intend to use, and put the UI behind TLS if it is reachable
+  beyond your own network.
+</div>
+
+<ul class="nav nav-pills mb-4" role="tablist">
+  <li class="nav-item"><a class="nav-link active" href="#jamf">Jamf Pro</a></li>
+  <li class="nav-item"><a class="nav-link" href="#iru">Iru</a></li>
+</ul>
+
+<h2 class="h4 mt-4" id="jamf">Jamf Pro</h2>
+<h3 class="h5 mt-3">1. Create an API Role</h3>
+<p class="mb-2">
+  In Jamf Pro: <span class="mono">Settings &rarr; System &rarr; API roles and clients &rarr; API Roles &rarr; New</span>.
+  Add the privileges below — Jamf checks reads and writes separately, and MDM commands
+  need three different kinds of privilege at once.
+</p>
+
+<h4 class="h6 mt-4">Always required</h4>
+<table class="table table-sm">
+  <thead><tr><th style="width:22rem">Privilege</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td class="mono">Read Policies</td><td>Populate the policy dropdown</td></tr>
+    <tr><td class="mono">Read macOS Configuration Profiles</td><td>Populate the macOS profile dropdown</td></tr>
+    <tr><td class="mono">Read iOS Configuration Profiles</td><td>Populate the mobile profile dropdown</td></tr>
+    <tr><td class="mono">Read Smart Computer Groups</td><td>Group targets (smart)</td></tr>
+    <tr><td class="mono">Read Static Computer Groups</td><td>Group targets (static) — separate privilege from the smart one</td></tr>
+    <tr><td class="mono">Read Smart Mobile Device Groups</td><td>Mobile group targets (smart)</td></tr>
+    <tr><td class="mono">Read Static Mobile Device Groups</td><td>Mobile group targets (static)</td></tr>
+  </tbody>
+</table>
+
+<h4 class="h6 mt-4">Per action</h4>
+<table class="table table-sm">
+  <thead><tr><th style="width:22rem">Privilege</th><th>Enables</th></tr></thead>
+  <tbody>
+    <tr><td class="mono">Update Policies</td><td>Enable/disable a policy, and change a policy's scope</td></tr>
+    <tr><td class="mono">Update macOS Configuration Profiles</td><td>Assign/unassign a macOS profile to a computer group</td></tr>
+    <tr><td class="mono">Update iOS Configuration Profiles</td><td>Assign/unassign a mobile profile to a device group</td></tr>
+  </tbody>
+</table>
+<p class="small text-secondary">
+  Scope lives on the policy or profile object, so the <span class="mono">Update … Computer Groups</span>
+  privileges are <strong>not</strong> needed — this tool never edits a group's definition.
+</p>
+
+<h4 class="h6 mt-4">MDM commands - all three of these</h4>
+<ol>
+  <li>
+    <span class="mono">View MDM command information in Jamf Pro API</span> — required by every
+    <span class="mono">/api/v2/mdm/</span> endpoint.
+    <strong>Careful:</strong> the near-identical <span class="mono">Send MDM command information in Jamf Pro API</span>
+    does <em>not</em> satisfy it. Picking the wrong one gives
+    <span class="mono">403 INVALID_PRIVILEGE</span>.
+  </li>
+  <li>
+    <span class="mono">Read Computers</span> and/or <span class="mono">Read Mobile Devices</span> — every run
+    does one inventory sweep to turn IDs and serial numbers into management IDs and to check
+    whether each device can actually take the command. Without it you get
+    <span class="mono">401</span> on every command, however many Send privileges you have.
+  </li>
+  <li>The Send privilege for each command you schedule:</li>
+</ol>
+
+<table class="table table-sm">
+  <thead><tr><th style="width:16rem">Command</th><th>Send privilege</th><th>Sent via</th></tr></thead>
+  <tbody>
+    <tr><td>Lock computer</td><td class="mono">Send Computer Remote Lock Command</td><td class="mono">/api/v2/mdm/commands</td></tr>
+    <tr><td>Wipe computer</td><td class="mono">Send Computer Remote Wipe Command</td><td class="mono">/api/v2/mdm/commands</td></tr>
+    <tr><td>Restart computer</td><td class="mono">Send Computer Restart Command</td><td class="mono">/api/v2/mdm/commands</td></tr>
+    <tr><td>Shut down computer</td><td class="mono">Send Computer Shut Down Command</td><td class="mono">/api/v2/mdm/commands</td></tr>
+    <tr><td>Enable/disable remote desktop</td><td class="mono">Send Computer Remote Desktop Command</td><td class="mono">/api/v2/mdm/commands</td></tr>
+    <tr><td>Blank push</td><td class="mono">Send MDM Check In Command</td><td class="mono">/api/v2/mdm/blank-push</td></tr>
+    <tr><td>Unmanage computer</td><td class="mono">Send Computer Unmanage Command</td><td>Classic API</td></tr>
+    <tr><td>Lock mobile device</td><td class="mono">Send Mobile Device Remote Lock Command</td><td class="mono">/api/v2/mdm/commands</td></tr>
+    <tr><td>Wipe mobile device</td><td class="mono">Send Mobile Device Remote Wipe Command</td><td class="mono">/api/v2/mdm/commands</td></tr>
+    <tr><td>Restart / shut down mobile</td><td class="mono">Send Mobile Device Restart Device Command</td><td class="mono">/api/v2/mdm/commands</td></tr>
+    <tr><td>Enable/disable Lost Mode</td><td class="mono">Send Mobile Device Enable Lost Mode Command</td><td class="mono">/api/v2/mdm/commands</td></tr>
+    <tr><td>Clear passcode</td><td class="mono">Send Mobile Device Clear Passcode Command</td><td>Classic API (v2 needs an unlock token)</td></tr>
+    <tr><td>Update mobile inventory</td><td class="mono">Send Inventory Requests to Mobile Devices</td><td>Classic API</td></tr>
+    <tr><td>Unmanage mobile device</td><td class="mono">Send Mobile Device Unmanage Command</td><td>Classic API</td></tr>
+  </tbody>
+</table>
+
+<h3 class="h5 mt-4">2. Create an API Client</h3>
+<p>
+  <span class="mono">API roles and clients &rarr; API Clients &rarr; New</span>. Assign the role you just made,
+  enable the client, then generate a client secret — Jamf shows it once. Leave the client
+  unscoped from Sites unless you mean to restrict it; a Site-scoped client silently sees
+  fewer objects, which looks identical to missing privileges.
+</p>
+
+<h3 class="h5 mt-4">3. Add the instance here</h3>
+<p>
+  <a href="/instances">Instances &rarr; Add instance</a>. Base URL is the full canonical host
+  (<span class="mono">https://yourorg.jamfcloud.com</span>, no trailing path). Choose
+  <strong>API Client</strong>, paste the client ID and secret, save, then press <strong>Test</strong>.
+  A healthy result names your Jamf Pro version and counts what it can see.
+</p>
+
+
+<hr class="mt-5">
+<h2 class="h4 mt-4" id="iru">Iru</h2>
+<p class="small text-secondary">
+  Iru is the current name for what was Kandji. Its API still answers on the
+  <span class="mono">api.kandji.io</span> hostnames as well as
+  <span class="mono">api.iru.com</span>; either works.
+</p>
+
+<h3 class="h5 mt-4">1. Create an API token</h3>
+<p>
+  In Iru: <span class="mono">Settings &rarr; Access &rarr; API tokens &rarr; Add Token</span>.
+  Tokens are tenant-level bearer tokens with per-endpoint permissions, so enable only what you
+  schedule. Copy the token when it is shown - Iru does not show it again.
+</p>
+<table class="table table-sm">
+  <thead><tr><th style="width:22rem">Permission</th><th>Needed for</th></tr></thead>
+  <tbody>
+    <tr><td class="mono">Device list</td><td>Resolving serial numbers, blueprint membership, the pre-flight check</td></tr>
+    <tr><td class="mono">Blueprint list</td><td>The blueprint dropdowns</td></tr>
+    <tr><td class="mono">Update device</td><td>Moving a device to another blueprint</td></tr>
+    <tr><td class="mono">The specific device actions you schedule</td><td>Lock, erase, restart, blank push, and so on - each is its own permission</td></tr>
+  </tbody>
+</table>
+
+<h3 class="h5 mt-4">2. Find your API URL</h3>
+<p>
+  Also under <span class="mono">Settings &rarr; Access</span>. It looks like
+  <span class="mono">https://yourtenant.api.kandji.io</span> (US) or
+  <span class="mono">https://yourtenant.api.eu.kandji.io</span> (EU). Paste it as the instance
+  Base URL exactly as shown, with no trailing path.
+</p>
+
+<h3 class="h5 mt-4">3. What you can schedule</h3>
+<table class="table table-sm">
+  <thead><tr><th style="width:20rem">Action</th><th>API call</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Send MDM command to devices</td>
+      <td class="mono">POST /api/v1/devices/{id}/action/{action}</td>
+    </tr>
+    <tr>
+      <td>Move devices to a blueprint</td>
+      <td class="mono">PATCH /api/v1/devices/{id} &nbsp;{"blueprint_id": "..."}</td>
+    </tr>
+  </tbody>
+</table>
+
+<p class="small text-secondary">Commands available: {{ iru_commands.keys() | join(', ') }}</p>
+
+<div class="alert alert-secondary">
+  <div class="fw-semibold mb-1">Blueprints: there is no "unassign"</div>
+  <div class="small">
+    Every Iru device belongs to exactly one blueprint, and the API only sets which one. Taking a
+    Mac out of a blueprint therefore means moving it into another - point the schedule at a
+    destination blueprint and the devices that are already there are left alone. Deleting a device
+    from Iru is a different, destructive operation and is not wired into this tool.
+  </div>
+</div>
+
+<h3 class="h5 mt-4">Targeting</h3>
+<ul>
+  <li><strong>Specific devices</strong> - serial numbers (what you'll usually have) or Iru device UUIDs, comma separated.</li>
+  <li><strong>Blueprint</strong> - every device in it, read when the job fires.</li>
+  <li>Devices whose MDM is not enabled, or that have been removed from Iru, are skipped and named in the run log.</li>
+</ul>
+
+<h3 class="h5 mt-4">Worth knowing</h3>
+<ul>
+  <li><strong>Locking a Mac returns an unlock PIN</strong> that Iru generates. It is recorded in the run log - without it you cannot unlock the machine.</li>
+  <li>Erase needs a 6-digit PIN for Macs; it is ignored for iOS, iPadOS and tvOS.</li>
+  <li>Iru actions are one API call per device, so a large blueprint means a lot of calls. The tenant limit is 10,000 requests per hour.</li>
+  <li>A command that is already pending on a device comes back as <span class="mono">400 Command already running</span>.</li>
+  <li>Unlock Account and Delete User need a local username; Set Name needs a device name.</li>
+</ul>
+
+<h3 class="h5 mt-4">Troubleshooting</h3>
+<table class="table table-sm">
+  <thead><tr><th style="width:22rem">What you see</th><th>What it means</th></tr></thead>
+  <tbody>
+    <tr><td class="mono">401 Invalid token</td><td>Token is wrong, revoked or expired</td></tr>
+    <tr><td class="mono">403 permission</td><td>The token is not scoped to that endpoint - Settings &rarr; Access &rarr; API tokens</td></tr>
+    <tr><td class="mono">400 Command already running</td><td>Iru still has the same command pending for that device</td></tr>
+    <tr><td class="mono">400 Command is not allowed for current device</td><td>The command doesn't apply to that hardware or OS</td></tr>
+    <tr><td class="mono">404 Device not found</td><td>The serial resolved to a device Iru has since removed</td></tr>
+  </tbody>
+</table>
+
+<hr class="mt-5">
+<h2 class="h4 mt-4">Both platforms</h2>
+<h3 class="h5 mt-4">Targeting devices</h3>
+<ul>
+  <li><strong>Group</strong> — membership is expanded when the job fires, not when you save it, so smart groups stay current.</li>
+  <li><strong>Specific devices</strong> — a comma-separated list of Jamf IDs and/or serial numbers, mixed freely. Digits are read as IDs, anything else as a serial.</li>
+  <li>Devices that are unmanaged or not MDM-capable are skipped and named in the run log; the rest still get the command.</li>
+</ul>
+
+<h3 class="h5 mt-4">Jamf Pro troubleshooting</h3>
+<table class="table table-sm">
+  <thead><tr><th style="width:22rem">What you see</th><th>What it means</th></tr></thead>
+  <tbody>
+    <tr>
+      <td class="mono">Test shows a version but 0 policies / 0 groups</td>
+      <td>Credentials are valid but the role has no read privileges, or the client is Site-scoped</td>
+    </tr>
+    <tr>
+      <td class="mono">403 INVALID_PRIVILEGE</td>
+      <td>Missing <span class="mono">View MDM command information in Jamf Pro API</span> — check you didn't add the <span class="mono">Send MDM command information…</span> lookalike</td>
+    </tr>
+    <tr>
+      <td class="mono">401 Unauthorized on a write, reads fine</td>
+      <td>Missing the matching Update or Send privilege for that object</td>
+    </tr>
+    <tr>
+      <td class="mono">401 on an MDM command</td>
+      <td>Missing <span class="mono">Read Computers</span> / <span class="mono">Read Mobile Devices</span></td>
+    </tr>
+    <tr>
+      <td class="mono">400 No command was queued for computer N</td>
+      <td>Jamf accepted the request and declined to queue it: the device isn't eligible. Erase All Content and Settings needs Apple Silicon or T2 on macOS 12+</td>
+    </tr>
+    <tr>
+      <td class="mono">HTTP 30x redirect</td>
+      <td>The instance Base URL isn't the canonical host — fix it rather than following the redirect, which would drop authentication</td>
+    </tr>
+    <tr>
+      <td>Command succeeded, nothing happened on the device</td>
+      <td>It's queued. The device executes on its next MDM check-in; a stale <span class="mono">lastContactTime</span> means a long wait</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3 class="h5 mt-4">Notes worth knowing</h3>
+<ul>
+  <li>Scope changes are read-modify-write: the current group list is fetched, one group added or removed, and the whole list written back. A scope edit made in the Jamf console between the read and the write is overwritten.</li>
+  <li>Computer lock and wipe require a 6-digit PIN. Mobile wipes don't take one.</li>
+  <li>Wipes send <span class="mono">returnToService.enabled = false</span>; erased Macs won't auto-re-enroll.</li>
+  <li>A one-shot schedule pauses itself after a successful run so its history stays visible. <strong>Run now</strong> never auto-pauses.</li>
+  <li>If the container is down at fire time, the run happens on startup within a one-hour grace window, then is skipped.</li>
+  <li>Times are stored in UTC and shown in each schedule's own timezone.</li>
+</ul>
+
+<hr class="mt-5">
+<div class="text-secondary small pb-4">
+  <div><strong>{{ brand.title }}</strong> &middot; version {{ app_version }}</div>
+  <div class="mt-1">
+    Created by <strong>Kyle Ericson</strong>, built with Claude (Anthropic's Claude Opus) as pair programmer.
+  </div>
+  <div class="mt-1">
+    Developer contact: <a href="mailto:kyle@ericsontech.com">kyle@ericsontech.com</a>
+  </div>
+</div>
+{% endblock %}

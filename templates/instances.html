@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h4 mb-0">Jamf Pro instances</h1>
+  <a class="btn btn-primary" href="/instances/new">Add instance</a>
+</div>
+
+{% if not rows %}
+  <div class="alert alert-secondary">No instances configured yet.</div>
+{% else %}
+<div class="row g-3">
+  {% for row in rows %}
+  {% set inst = row.instance %}
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between">
+          <h2 class="h6 mb-1">{{ inst.name }}</h2>
+          <span class="badge text-bg-secondary">{{ 'API client' if inst.auth_type == 'client' else 'user/pass' }}</span>
+        </div>
+        <div class="small mono text-secondary">{{ inst.base_url }}</div>
+        <div class="small text-secondary mt-2">
+          {{ row.job_count }} schedule(s){% if not inst.verify_ssl %} &middot; TLS verification off{% endif %}
+        </div>
+        {% if inst.notes %}<div class="small mt-2">{{ inst.notes }}</div>{% endif %}
+        <div id="test-{{ inst.id }}" class="small mt-2"></div>
+      </div>
+      <div class="card-footer d-flex gap-2">
+        <button class="btn btn-sm btn-outline-primary" onclick="testInstance({{ inst.id }})">Test</button>
+        <a class="btn btn-sm btn-outline-secondary" href="/instances/{{ inst.id }}/edit">Edit</a>
+        <form method="post" action="/instances/{{ inst.id }}/delete"
+              onsubmit="return confirm('Delete {{ inst.name }} and its {{ row.job_count }} schedule(s)?')">
+          <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function testInstance(id) {
+  const target = document.getElementById('test-' + id);
+  target.className = 'small mt-2 text-secondary';
+  target.textContent = 'Testing...';
+  const resp = await fetch('/instances/' + id + '/test', { method: 'POST' });
+  const data = await resp.json();
+  target.className = 'small mt-2 ' + (data.ok ? 'text-success' : 'text-danger');
+  target.textContent = data.detail;
+}
+</script>
+{% endblock %}

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="h4 mb-3">Branding</h1>
+
+<form method="post" action="/settings" enctype="multipart/form-data" class="row g-3" style="max-width: 44rem">
+  <div class="col-md-8">
+    <label class="form-label" for="org_name">Organization name</label>
+    <input class="form-control" id="org_name" name="org_name" maxlength="120"
+           value="{{ brand.org_name }}" placeholder="Ericson Tech">
+    <div class="form-text">Shown in the header, the sign-in page and the browser tab.</div>
+  </div>
+
+  <div class="col-md-4">
+    <label class="form-label" for="accent">Accent color</label>
+    <div class="input-group">
+      <input class="form-control form-control-color" type="color" id="accent_picker"
+             value="{{ brand.accent or '#0d6efd' }}" onchange="document.getElementById('accent').value = this.value">
+      <input class="form-control mono" id="accent" name="accent" maxlength="20"
+             value="{{ brand.accent }}" placeholder="#0d6efd">
+    </div>
+    <div class="form-text">Leave blank for Bootstrap's default blue.</div>
+  </div>
+
+  <div class="col-md-8">
+    <label class="form-label" for="logo">Logo</label>
+    <input class="form-control" type="file" id="logo" name="logo"
+           accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml">
+    <div class="form-text">PNG, JPEG, WebP, GIF or SVG, up to {{ (max_logo_kb) }} KB. Wide marks read best.</div>
+  </div>
+
+  <div class="col-md-4 d-flex align-items-center">
+    {% if brand.logo_file %}
+      <div>
+        <img src="/branding/logo" alt="Current logo" style="max-height:48px;max-width:180px">
+        <div class="form-check mt-2">
+          <input class="form-check-input" type="checkbox" id="remove_logo" name="remove_logo">
+          <label class="form-check-label small" for="remove_logo">Remove logo</label>
+        </div>
+      </div>
+    {% else %}
+      <span class="text-secondary small">No logo uploaded.</span>
+    {% endif %}
+  </div>
+
+  <div class="col-md-6">
+    <label class="form-label" for="default_theme">Default theme</label>
+    <select class="form-select" id="default_theme" name="default_theme">
+      <option value="system" {% if brand.default_theme == 'system' %}selected{% endif %}>Follow the OS</option>
+      <option value="dark" {% if brand.default_theme == 'dark' %}selected{% endif %}>Dark</option>
+      <option value="light" {% if brand.default_theme == 'light' %}selected{% endif %}>Light</option>
+    </select>
+    <div class="form-text">A viewer's own toggle choice always wins over this.</div>
+  </div>
+
+  <div class="col-12">
+    <label class="form-label" for="support_note">Internal support note</label>
+    <textarea class="form-control" id="support_note" name="support_note" rows="2"
+              maxlength="2000" placeholder="Who to contact in your org before scheduling a wipe">{{ brand.support_note }}</textarea>
+    <div class="form-text">Shown on the Help page. Useful if colleagues will use this.</div>
+  </div>
+
+  <div class="col-12 d-flex gap-2">
+    <button class="btn btn-primary" type="submit">Save branding</button>
+    <a class="btn btn-outline-secondary" href="/">Cancel</a>
+  </div>
+</form>
+{% endblock %}

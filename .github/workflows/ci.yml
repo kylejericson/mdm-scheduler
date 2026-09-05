@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Tests
+        run: pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: jamf-scheduler:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Boot the container and check /health
+        run: |
+          docker run -d --name jamf-scheduler-ci \
+            -e SECRET_KEY=ci-secret -e ADMIN_PASSWORD=ci-password -e TZ=UTC \
+            -p 8000:8000 jamf-scheduler:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/health | grep -q '"status":"ok"'; then
+              echo "healthy after ${i}s"
+              curl -s http://localhost:8000/health
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "container never became healthy" >&2
+          docker logs jamf-scheduler-ci
+          exit 1
+
+      - name: Container logs
+        if: always()
+        run: docker logs jamf-scheduler-ci || true

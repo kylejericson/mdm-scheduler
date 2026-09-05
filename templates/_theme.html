@@ -1,0 +1,14 @@
+{# Applied before first paint so there is no flash of the wrong theme.
+   Order: this viewer's saved choice, then the org default, then the OS. #}
+<script>
+  (function () {
+    var orgDefault = "{{ brand.default_theme or 'system' }}";
+    var saved = null;
+    try { saved = localStorage.getItem('mdm-scheduler-theme'); } catch (e) { /* private mode */ }
+    var choice = saved || orgDefault;
+    if (choice !== 'dark' && choice !== 'light') {
+      choice = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    }
+    document.documentElement.setAttribute('data-bs-theme', choice);
+  })();
+</script>

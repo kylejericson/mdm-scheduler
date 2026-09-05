@@ -1,0 +1,18 @@
+<button class="btn btn-sm btn-outline-secondary" type="button" onclick="toggleTheme()"
+        title="Switch between light and dark" aria-label="Switch theme">
+  <span id="theme-icon">&#9788;</span>
+</button>
+<script>
+  function paintThemeIcon() {
+    var dark = document.documentElement.getAttribute('data-bs-theme') === 'dark';
+    var icon = document.getElementById('theme-icon');
+    if (icon) icon.innerHTML = dark ? '&#9789;' : '&#9788;';
+  }
+  function toggleTheme() {
+    var next = document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-bs-theme', next);
+    try { localStorage.setItem('mdm-scheduler-theme', next); } catch (e) { /* nothing to do */ }
+    paintThemeIcon();
+  }
+  paintThemeIcon();
+</script>
