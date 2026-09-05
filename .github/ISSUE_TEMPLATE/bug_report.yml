@@ -1,0 +1,37 @@
+name: Bug report
+description: Something behaved incorrectly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never paste API credentials, tokens, `SECRET_KEY`, or unlock PINs.**
+        Run-log messages are usually safe, but check them first.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: From `curl -s localhost:8000/health` or the page footer
+      placeholder: "2.2.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: mdm
+    attributes:
+      label: Which MDM
+      options: [Jamf Pro, Iru (Kandji), Both, Neither / the app itself]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Run log or container logs
+      description: "`docker compose logs mdm-scheduler --tail 50`, credentials removed"
+      render: shell

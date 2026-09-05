@@ -64,4 +64,138 @@
     <a class="btn btn-outline-secondary" href="/">Cancel</a>
   </div>
 </form>
+
+<hr class="my-5" id="tls">
+
+<h2 class="h5 mb-1">HTTPS</h2>
+<p class="text-secondary small mb-3" style="max-width: 44rem">
+  A Caddy sidecar in this stack terminates TLS and gets certificates from Let's Encrypt.
+  Saving here reloads Caddy immediately - no restart, and renewal is automatic.
+</p>
+
+<form method="post" action="/settings/tls" class="row g-3" style="max-width: 44rem">
+  <div class="col-12 form-check ms-1">
+    <input class="form-check-input" type="checkbox" id="tls_enabled" name="tls_enabled"
+           {% if brand.tls_enabled %}checked{% endif %} onchange="toggleTls()">
+    <label class="form-check-label" for="tls_enabled"><strong>Serve HTTPS</strong></label>
+    <div class="form-text">Off means plain HTTP on port 80, as the stack ships.</div>
+  </div>
+
+  <div class="col-md-7 tls-field">
+    <label class="form-label" for="tls_hostname">Hostname</label>
+    <input class="form-control mono" id="tls_hostname" name="tls_hostname"
+           placeholder="mdm.ericsontech.com" value="{{ brand.tls_hostname }}">
+    <div class="form-text">Must be a name Let's Encrypt can verify you control.</div>
+  </div>
+
+  <div class="col-md-5 tls-field">
+    <label class="form-label" for="tls_email">Contact email</label>
+    <input class="form-control" type="email" id="tls_email" name="tls_email"
+           placeholder="kyle@ericsontech.com" value="{{ brand.tls_email }}">
+    <div class="form-text">Expiry warnings from Let's Encrypt. Not proof of ownership.</div>
+  </div>
+
+  <div class="col-12 tls-field">
+    <label class="form-label" for="tls_challenge">Validation method</label>
+    <select class="form-select" id="tls_challenge" name="tls_challenge" onchange="toggleTls()">
+      <option value="http" {% if brand.tls_challenge != 'dns' %}selected{% endif %}>
+        HTTP-01 - Let's Encrypt fetches a file from this host
+      </option>
+      <option value="dns" {% if brand.tls_challenge == 'dns' %}selected{% endif %}>
+        DNS-01 - Caddy writes a TXT record through your DNS provider
+      </option>
+    </select>
+  </div>
+
+  <div class="col-12 tls-http">
+    <div class="alert alert-warning mb-0 small">
+      <strong>HTTP-01 needs inbound access.</strong> A public <span class="mono">A</span> record for
+      the hostname must point at this network, and port <span class="mono">80</span> must be
+      forwarded to this container - Let's Encrypt fetches
+      <span class="mono">/.well-known/acme-challenge/&hellip;</span> from the internet, so writing the
+      file locally is not enough. That also means this console becomes reachable from the internet.
+    </div>
+  </div>
+
+  <div class="col-12 tls-dns">
+    <div class="alert alert-info mb-0 small">
+      <strong>DNS-01 opens nothing.</strong> Caddy proves ownership by writing a TXT record, so the
+      host can stay on your LAN and no ports are forwarded. Needs a DNS API token with rights to
+      edit records for the zone.
+    </div>
+  </div>
+
+  <div class="col-md-4 tls-dns">
+    <label class="form-label" for="tls_dns_provider">DNS provider</label>
+    <select class="form-select" id="tls_dns_provider" name="tls_dns_provider" onchange="paintTokenHint()">
+      {% for key, label in dns_providers.items() %}
+        <option value="{{ key }}" {% if brand.tls_dns_provider == key %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-md-8 tls-dns">
+    <label class="form-label" for="tls_dns_token">DNS API token</label>
+    <input class="form-control" type="password" id="tls_dns_token" name="tls_dns_token"
+           placeholder="{{ 'unchanged' if brand.tls_dns_token_enc else '' }}">
+    <div class="form-text" id="dns_token_hint"></div>
+    <div class="form-text">Encrypted at rest with the same key as your MDM credentials.</div>
+  </div>
+
+  <div class="col-12 form-check ms-1 tls-field">
+    <input class="form-check-input" type="checkbox" id="tls_staging" name="tls_staging"
+           {% if brand.tls_staging %}checked{% endif %}>
+    <label class="form-check-label" for="tls_staging">Use Let's Encrypt staging</label>
+    <div class="form-text">
+      Untrusted certificates, but no rate limits. Worth one run first - the production limit is
+      5 failures per hostname per hour.
+    </div>
+  </div>
+
+  <div class="col-12 d-flex gap-2 align-items-center">
+    <button class="btn btn-primary" type="submit">Save &amp; apply</button>
+    <button class="btn btn-outline-secondary" type="button" onclick="checkTls()">Check certificate</button>
+    <a class="btn btn-outline-secondary" href="/api/tls/caddyfile" target="_blank">View generated config</a>
+  </div>
+
+  <div class="col-12">
+    <div id="tls-status" class="small text-secondary"></div>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const DNS_TOKEN_HINTS = {{ dns_token_hints | tojson }};
+
+function paintTokenHint() {
+  const provider = document.getElementById('tls_dns_provider').value;
+  const hint = document.getElementById('dns_token_hint');
+  if (hint) hint.textContent = DNS_TOKEN_HINTS[provider] || '';
+}
+
+function toggleTls() {
+  const on = document.getElementById('tls_enabled').checked;
+  const dns = document.getElementById('tls_challenge').value === 'dns';
+  document.querySelectorAll('.tls-field').forEach(el => el.hidden = !on);
+  document.querySelectorAll('.tls-dns').forEach(el => el.hidden = !(on && dns));
+  document.querySelectorAll('.tls-http').forEach(el => el.hidden = !(on && !dns));
+  paintTokenHint();
+}
+
+async function checkTls() {
+  const target = document.getElementById('tls-status');
+  target.className = 'small text-secondary';
+  target.textContent = 'Asking Caddy for its certificate...';
+  const resp = await fetch('/api/tls/status');
+  const data = await resp.json();
+  const colour = {ok: 'text-success', staging: 'text-warning', 'self-signed': 'text-warning',
+                  error: 'text-danger', off: 'text-secondary'};
+  target.className = 'small ' + (colour[data.state] || 'text-secondary');
+  target.textContent = data.detail + (data.names && data.names.length ? ' Names: ' + data.names.join(', ') : '');
+}
+
+toggleTls();
+if (document.getElementById('tls_enabled').checked) checkTls();
+</script>
 {% endblock %}

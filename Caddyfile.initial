@@ -1,0 +1,11 @@
+# Replaced at runtime by the app (Branding -> HTTPS -> Save & apply).
+# Admin binds to all interfaces so the app container can reach it on the
+# compose network; it is never published to the host.
+{
+	admin 0.0.0.0:2019
+	auto_https off
+}
+
+:80 {
+	reverse_proxy mdm-scheduler:8000
+}

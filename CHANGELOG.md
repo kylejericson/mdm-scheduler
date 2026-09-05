@@ -1,5 +1,117 @@
 # Changelog
 
+## 2.3.2
+
+- **Fixed: restarting the Caddy container silently turned HTTPS off.** The
+  config the app sends to Caddy's admin API lives in memory, and the container
+  starts from `Caddyfile.initial` - plain HTTP - so any restart dropped TLS
+  while the Branding tab still showed HTTPS enabled and the site stopped
+  answering on 443 entirely. Two changes, because they cover different
+  failures:
+  - The sidecar now runs with `--resume`, so it reloads the config it last
+    accepted instead of the starting one.
+  - The app re-applies the stored config at startup, which covers a recreated
+    container, a lost `caddy_config` volume, or a database restored onto a new
+    host. It is best effort and logs rather than blocking boot if Caddy is not
+    up yet.
+
+
+## 2.3.1
+
+- **Fixed: certificate status always said "Caddy served no certificate for that
+  hostname"**, even with a valid certificate being served. The probe read
+  `getpeercert()`, which returns `{}` whenever `verify_mode` is `CERT_NONE` -
+  Python only builds that dict as a side effect of validating the chain, and
+  this check deliberately doesn't validate. It now reads the DER
+  (`getpeercert(binary_form=True)`, always populated) and parses it with
+  `cryptography`, which is already a dependency.
+- **Staging certificates are now called out as their own state.** A staging
+  certificate is a real ACME certificate, so nothing flagged it, yet no browser
+  trusts it - the most confusing possible way for HTTPS to look finished. The
+  status line now names it and says to untick staging and apply again.
+- **Switching staging off no longer looks broken.** Caddy does not discard a
+  certificate that is still valid just because the configured CA changed, so
+  the staging certificate keeps being served until the sidecar reloads. The
+  status line now detects exactly that case - staging off, staging certificate
+  on the wire - and says to restart the caddy container.
+- Status tests run against an actual TLS server with a generated certificate
+  rather than mocking the probe, so this class of bug fails CI.
+
+## 2.3.0
+
+Packaging for public use.
+
+- `scripts/bootstrap.sh` writes `.env` with a generated `SECRET_KEY` and asks
+  for a UI password, so first run is clone -> bootstrap -> `docker compose up`.
+  It refuses to overwrite an existing `.env`, since a new `SECRET_KEY` orphans
+  stored MDM credentials.
+- README quick start rewritten for someone who has never seen the tool: what it
+  needs, the prebuilt-image and build-from-source paths, upgrading, Dockge and
+  Portainer, and which ports are published and why.
+- `RELEASING.md` documents cutting a release - including that GHCR packages are
+  private by default, so the first published image needs its visibility flipped
+  or nobody else can pull it.
+- Issue and PR templates, both of which lead with "don't paste credentials".
+- Security contact is a real address, with an honest note that this is a
+  one-person side project rather than a vendor with an on-call rotation.
+
+## 2.2.1
+
+- **Fixed the Caddy sidecar build.** The pinned `caddy:2.8.4-builder` ships Go
+  1.23 with `GOTOOLCHAIN=local`, and current `caddy-dns` modules require Go
+  1.24+, so `xcaddy build` failed with
+  `requires go >= 1.24 (running go 1.23.4; GOTOOLCHAIN=local)`. Now builds on
+  `caddy:2.11.4-builder` and sets `GOTOOLCHAIN=auto` so Go fetches whatever
+  toolchain a module asks for - this keeps building as modules move on rather
+  than breaking on the next bump.
+
+## 2.2.0
+
+- **Nine DNS providers for DNS-01**, up from one: IONOS, Cloudflare,
+  DigitalOcean, Hetzner, Linode, Vultr, deSEC, DuckDNS and Gandi. Module import
+  paths were taken from Caddy's own package registry rather than guessed.
+- Each provider shows where to create its token next to the field.
+- A test cross-checks the provider dropdown against the `--with` lines in
+  `Dockerfile.caddy`, so offering a provider whose module was never compiled in
+  fails CI instead of failing at issuance time.
+- Providers that need more than a single token (Route 53, Azure, Google Cloud
+  DNS, GoDaddy, OVH, Namecheap) are deliberately not offered - the form collects
+  one token, so they need per-provider credential fields first. Selecting an
+  unknown provider falls back to IONOS rather than writing an unbuildable config.
+
+## 2.1.1
+
+- Help and README now use Iru's actual API token permission names -
+  `List Blueprints`, `Get Blueprint`, `Update Blueprint`, and the per-command
+  `Device Actions` entries (`Send a blank push`, `Erase Device`, …) - rather
+  than paraphrases that don't match what the token editor shows.
+
+## 2.1.0
+
+- **HTTPS from the Branding tab.** A Caddy sidecar terminates TLS and gets
+  certificates from Let's Encrypt. Set the hostname, contact email and
+  validation method in the UI; the app renders a Caddyfile and hands it to
+  Caddy's admin API (`POST /load`, `Content-Type: text/caddyfile`), which
+  reloads with no downtime and no restart of the scheduler. Renewal is
+  automatic - there is no cron to maintain.
+- **Both ACME challenges**, because they have different prerequisites:
+  - **HTTP-01** - Let's Encrypt fetches the challenge file over the public
+    internet, so it needs a public A record and inbound port 80. The UI says so.
+  - **DNS-01** - Caddy writes a TXT record through the provider's API, so
+    nothing inbound is opened and the host can stay on a private network.
+    IONOS and Cloudflare modules are compiled into the sidecar image.
+- Let's Encrypt **staging** toggle, worth one run before spending production
+  rate limit (5 failures per hostname per hour).
+- **Certificate status** is read by asking Caddy for a real handshake and
+  inspecting the certificate it serves - issuer and days remaining. A loaded
+  config proves nothing about whether issuance actually happened, and Caddy's
+  internal self-signed certificate is called out as "not a Let's Encrypt one".
+- **View generated config** shows the exact Caddyfile being used, with the DNS
+  token redacted, so the proxy config is reviewable rather than a black box.
+- The DNS API token is Fernet-encrypted at rest like the MDM credentials, and
+  never rendered into the page.
+- `branding` gains the TLS columns via the same startup ADD COLUMN migration.
+
 ## 2.0.0
 
 Renamed to **MDM Scheduler** and now speaks to more than one MDM.

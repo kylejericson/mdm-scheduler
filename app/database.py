@@ -61,6 +61,15 @@ def _add_missing_columns():
             "vendor": "TEXT NOT NULL DEFAULT 'jamf'",
             "api_token_enc": "TEXT NOT NULL DEFAULT ''",
         },
+        "branding": {
+            "tls_enabled": "BOOLEAN NOT NULL DEFAULT 0",
+            "tls_hostname": "TEXT NOT NULL DEFAULT ''",
+            "tls_email": "TEXT NOT NULL DEFAULT ''",
+            "tls_challenge": "TEXT NOT NULL DEFAULT 'http'",
+            "tls_dns_provider": "TEXT NOT NULL DEFAULT 'ionos'",
+            "tls_dns_token_enc": "TEXT NOT NULL DEFAULT ''",
+            "tls_staging": "BOOLEAN NOT NULL DEFAULT 0",
+        },
     }
     with engine.begin() as conn:
         for table, columns in additions.items():

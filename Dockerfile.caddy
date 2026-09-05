@@ -1,0 +1,42 @@
+# Caddy with DNS provider modules compiled in.
+#
+# The stock caddy image can only do the HTTP-01 challenge. DNS-01 - which is
+# what lets a private host get a Let's Encrypt certificate without exposing
+# anything - needs the provider's module built into the binary.
+#
+# Add providers by appending more --with lines; the UI's DNS provider list is
+# DNS_PROVIDERS in app/tls.py and must match what is built here.
+ARG CADDY_VERSION=2.11.4
+
+FROM caddy:${CADDY_VERSION}-builder AS builder
+
+# The builder images pin GOTOOLCHAIN=local, so Go refuses to fetch a newer
+# toolchain than the one baked in. Several caddy-dns modules now require a
+# newer Go than an older builder ships, which fails with
+# "requires go >= 1.xx (running go 1.yy; GOTOOLCHAIN=local)". Letting Go pull
+# the toolchain a module asks for keeps this building as modules move on.
+ENV GOTOOLCHAIN=auto
+
+# Single-token providers only: the UI collects one API token, so these are the
+# modules whose Caddyfile form is `dns <provider> <token>`. Providers needing
+# several values (Route 53, Azure, Google Cloud, GoDaddy, OVH, Namecheap) would
+# need per-provider credential fields first - see DNS_PROVIDERS in app/tls.py.
+# Module paths verified against https://caddyserver.com/api/packages.
+RUN xcaddy build \
+    --with github.com/caddy-dns/ionos \
+    --with github.com/caddy-dns/cloudflare \
+    --with github.com/caddy-dns/digitalocean \
+    --with github.com/caddy-dns/hetzner \
+    --with github.com/caddy-dns/linode \
+    --with github.com/caddy-dns/vultr \
+    --with github.com/caddy-dns/desec \
+    --with github.com/caddy-dns/duckdns \
+    --with github.com/caddy-dns/gandi
+
+FROM caddy:${CADDY_VERSION}
+COPY --from=builder /usr/bin/caddy /usr/bin/caddy
+
+# Starting config: plain HTTP proxy, admin reachable from the app container.
+# The app replaces this whole config via POST /load when you save on the
+# Branding tab, which is why every config it renders re-declares `admin`.
+COPY Caddyfile.initial /etc/caddy/Caddyfile

@@ -29,5 +29,9 @@ that can read the environment can decrypt them.
 ## Reporting a vulnerability
 
 Open a GitHub issue for anything low-risk. For something that would let
-somebody wipe a fleet, email the maintainer instead of filing publicly, and
-allow a reasonable window before disclosure.
+somebody wipe a fleet, email **kyle@ericsontech.com** instead of filing
+publicly, and allow a reasonable window before disclosure.
+
+This is a side project maintained by one person, not a vendor with an on-call
+rotation — set your expectations for response time accordingly, and don't deploy
+it anywhere that assumes otherwise.

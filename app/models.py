@@ -87,9 +87,26 @@ class Branding(Base):
     default_theme: Mapped[str] = mapped_column(String(10), default="system")  # system|dark|light
     support_note: Mapped[str] = mapped_column(Text, default="")
 
+    # HTTPS, served by the Caddy sidecar (see app/tls.py)
+    tls_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    tls_hostname: Mapped[str] = mapped_column(String(255), default="")
+    tls_email: Mapped[str] = mapped_column(String(255), default="")
+    tls_challenge: Mapped[str] = mapped_column(String(10), default="http")  # http | dns
+    tls_dns_provider: Mapped[str] = mapped_column(String(40), default="ionos")
+    tls_dns_token_enc: Mapped[str] = mapped_column(Text, default="")
+    tls_staging: Mapped[bool] = mapped_column(Boolean, default=False)
+
     @property
     def title(self) -> str:
         return f"{self.org_name} MDM Scheduler" if self.org_name else "MDM Scheduler"
+
+    @property
+    def tls_dns_token(self) -> str:
+        return decrypt(self.tls_dns_token_enc)
+
+    @tls_dns_token.setter
+    def tls_dns_token(self, value: str):
+        self.tls_dns_token_enc = encrypt(value)
 
 
 class Job(Base):

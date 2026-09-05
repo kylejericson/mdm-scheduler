@@ -5,6 +5,8 @@ services:
     image: mdm-scheduler:local
     container_name: mdm-scheduler
     ports:
+      # Direct HTTP access; Caddy also proxies to this container on the
+      # compose network. Set PORT= to an empty value to stop publishing it.
       - "${PORT:-8000}:8000"
     volumes:
       - mdm_scheduler_data:/data
@@ -15,8 +17,36 @@ services:
       DATA_DIR: /data
     restart: unless-stopped
 
+  caddy:
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
+    image: mdm-scheduler-caddy:local
+    container_name: mdm-scheduler-caddy
+    # --resume reloads the config the app last pushed to the admin API. Without
+    # it a restart drops Caddy back to Caddyfile.initial (plain HTTP) and HTTPS
+    # silently stops, even though the UI still shows it enabled.
+    command: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile --resume
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - mdm-scheduler
+    restart: unless-stopped
+    # Note: the admin API (:2019) is deliberately NOT published. It is reachable
+    # only from the app container on the compose network, and anything that can
+    # reach it can reconfigure the proxy.
+
 volumes:
   mdm_scheduler_data:
     # Upgrading from jamf-scheduler? Set DATA_VOLUME in .env to the existing
     # volume name (docker volume ls) to keep your instances and history.
     name: ${DATA_VOLUME:-mdm_scheduler_data}
+
+  caddy_data:
+    name: ${CADDY_DATA_VOLUME:-mdm_scheduler_caddy_data}
+  caddy_config:
+    name: ${CADDY_CONFIG_VOLUME:-mdm_scheduler_caddy_config}

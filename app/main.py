@@ -33,6 +33,8 @@ from .database import init_db, session_scope
 from .iru_client import IRU_COMMAND_SPECS, IRU_COMMANDS
 from .jamf_client import COMPUTER_COMMANDS, MOBILE_COMMANDS, OBJECTS
 from .models import Branding, Instance, Job, JobLog, as_utc
+from .tls import DNS_PROVIDERS, DNS_TOKEN_HINTS, TlsError, certificate_status, render_caddyfile
+from .tls import apply as tls_apply
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("mdm-scheduler")
@@ -44,8 +46,33 @@ PUBLIC_PATHS = {"/login", "/health", "/help", "/branding/logo"}
 async def lifespan(_app: FastAPI):
     init_db()
     sched.start()
+    reapply_tls()
     yield
     sched.shutdown()
+
+
+def reapply_tls() -> None:
+    """Push the stored HTTPS config back to Caddy at boot.
+
+    A config sent to the admin API lives in Caddy's memory. The sidecar runs
+    with `--resume` so it reloads its own autosave across a restart, but that
+    file lives on the caddy_config volume - recreate the container without it,
+    or bring the stack up on a new host from a restored database, and Caddy
+    comes back on the plain-HTTP starting config while the UI still says HTTPS
+    is on. Re-applying here keeps the database the source of truth. Best
+    effort: if Caddy is not up yet, its own autosave covers the normal restart
+    and the Branding tab reports the real state either way.
+    """
+    with session_scope() as session:
+        row = session.get(Branding, 1)
+        if row is None or not (row.tls_enabled and row.tls_hostname):
+            return
+        brand = row
+    try:
+        tls_apply(brand)
+        log.info("re-applied HTTPS config for %s", brand.tls_hostname)
+    except TlsError as exc:
+        log.warning("could not re-apply HTTPS config at startup: %s", exc)
 
 
 app = FastAPI(title="MDM Scheduler", version=__version__, lifespan=lifespan)
@@ -163,7 +190,15 @@ def branding_logo():
 
 @app.get("/settings", response_class=HTMLResponse)
 def settings_form(request: Request):
-    return templates.TemplateResponse("settings.html", ctx(request, max_logo_kb=MAX_LOGO_BYTES // 1024))
+    return templates.TemplateResponse(
+        "settings.html",
+        ctx(
+            request,
+            max_logo_kb=MAX_LOGO_BYTES // 1024,
+            dns_providers=DNS_PROVIDERS,
+            dns_token_hints=DNS_TOKEN_HINTS,
+        ),
+    )
 
 
 @app.post("/settings")
@@ -205,6 +240,61 @@ async def settings_save(
 
     flash(request, error or "Branding saved.", "danger" if error else "success")
     return RedirectResponse("/settings", status_code=303)
+
+
+# --------------------------------------------------------------------- TLS
+@app.post("/settings/tls")
+def settings_tls(
+    request: Request,
+    tls_enabled: str = Form(""),
+    tls_hostname: str = Form(""),
+    tls_email: str = Form(""),
+    tls_challenge: str = Form("http"),
+    tls_dns_provider: str = Form("ionos"),
+    tls_dns_token: str = Form(""),
+    tls_staging: str = Form(""),
+):
+    with session_scope() as session:
+        row = session.get(Branding, 1) or Branding(id=1)
+        row.tls_enabled = tls_enabled == "on"
+        row.tls_hostname = tls_hostname.strip().lower()[:255]
+        row.tls_email = tls_email.strip()[:255]
+        row.tls_challenge = tls_challenge if tls_challenge in ("http", "dns") else "http"
+        row.tls_dns_provider = tls_dns_provider if tls_dns_provider in DNS_PROVIDERS else "ionos"
+        row.tls_staging = tls_staging == "on"
+        if tls_dns_token.strip():  # blank on edit keeps the stored token
+            row.tls_dns_token = tls_dns_token.strip()
+        session.add(row)
+        session.flush()
+        brand = row
+
+    if brand.tls_enabled and not brand.tls_hostname:
+        flash(request, "A hostname is required to enable HTTPS.", "danger")
+        return RedirectResponse("/settings#tls", status_code=303)
+
+    try:
+        message = tls_apply(brand)
+        flash(request, message)
+    except TlsError as exc:
+        flash(request, f"Saved, but Caddy was not updated: {exc}", "danger")
+    return RedirectResponse("/settings#tls", status_code=303)
+
+
+@app.get("/api/tls/status")
+def api_tls_status():
+    return certificate_status(branding())
+
+
+@app.get("/api/tls/caddyfile")
+def api_tls_caddyfile():
+    """The exact config the sidecar is given - handy for debugging, and it makes
+    the generated file reviewable rather than a black box. The DNS token is
+    masked; it is the one secret that would otherwise appear here."""
+    brand = branding()
+    text = render_caddyfile(brand)
+    if brand.tls_dns_token:
+        text = text.replace(brand.tls_dns_token, "***REDACTED***")
+    return {"caddyfile": text}
 
 
 @app.get("/help", response_class=HTMLResponse)

@@ -134,9 +134,17 @@
   <thead><tr><th style="width:22rem">Permission</th><th>Needed for</th></tr></thead>
   <tbody>
     <tr><td class="mono">Device list</td><td>Resolving serial numbers, blueprint membership, the pre-flight check</td></tr>
-    <tr><td class="mono">Blueprint list</td><td>The blueprint dropdowns</td></tr>
-    <tr><td class="mono">Update device</td><td>Moving a device to another blueprint</td></tr>
-    <tr><td class="mono">The specific device actions you schedule</td><td>Lock, erase, restart, blank push, and so on - each is its own permission</td></tr>
+    <tr><td class="mono">List Blueprints</td><td>The blueprint dropdowns</td></tr>
+    <tr><td class="mono">Get Blueprint</td><td>Naming the source and destination blueprints in the run log</td></tr>
+    <tr><td class="mono">Update Blueprint</td><td>Moving a device to another blueprint</td></tr>
+    <tr>
+      <td class="mono">Device Actions</td>
+      <td>
+        Each command is its own permission, named for what it does &mdash;
+        <span class="mono">Send a blank push</span>, <span class="mono">Erase Device</span>,
+        and so on. Enable only the ones you schedule.
+      </td>
+    </tr>
   </tbody>
 </table>
 

@@ -1,0 +1,16 @@
+name: Feature request
+description: Suggest an action, MDM, or capability
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What would you schedule
+      description: The action you want, and what you do by hand today
+    validations:
+      required: true
+  - type: input
+    id: endpoint
+    attributes:
+      label: Relevant API endpoint
+      description: If you know it - a link to the vendor's official reference helps a lot

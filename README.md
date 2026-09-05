@@ -5,7 +5,7 @@ configuration profile to a group on Friday, move a Mac into an Iru blueprint by
 serial number, send an MDM command to a smart group on a cron.
 Self-hosted, single container, one SQLite file.
 
-[![CI](https://github.com/__YOUR_GH_HANDLE__/mdm-scheduler/actions/workflows/ci.yml/badge.svg)](https://github.com/__YOUR_GH_HANDLE__/mdm-scheduler/actions/workflows/ci.yml)
+[![CI](https://github.com/kylejericson/mdm-scheduler/actions/workflows/ci.yml/badge.svg)](https://github.com/kylejericson/mdm-scheduler/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 > Not affiliated with, endorsed by, or supported by Jamf or Iru. "Jamf" and
@@ -40,35 +40,116 @@ actual policies and groups, and a scheduler that runs the change when you said.
 | **Light / dark** | Per-viewer toggle, org-level default, OS fallback |
 | **Iru blueprints** | Move devices into a blueprint by serial number, or move everything out of one; Iru has no unassign, so moving is the mechanism |
 | **Built-in help** | `/help` documents every Jamf privilege and Iru token permission the tool needs, and what each error means — readable before you sign in |
+| **HTTPS** | Let's Encrypt via a Caddy sidecar, configured from the Branding tab; HTTP-01 or DNS-01, automatic renewal |
 | **No CDN at runtime** | UI assets are vendored into the image, so a restricted-egress host still renders |
 
 ## Quick start
 
+Needs Docker with the Compose plugin. Nothing else — no Python, no database, no
+reverse proxy to configure.
+
 ```bash
-git clone https://github.com/__YOUR_GH_HANDLE__/mdm-scheduler.git
+git clone https://github.com/kylejericson/mdm-scheduler.git
 cd mdm-scheduler
-
-cp .env.example .env
-printf 'SECRET_KEY=%s\n' "$(openssl rand -hex 32)" >> .env
-$EDITOR .env          # set ADMIN_PASSWORD and TZ
-
+./scripts/bootstrap.sh        # generates SECRET_KEY, asks for a UI password
 docker compose up -d
 ```
 
-Open `http://<host>:8000`, sign in, add an instance, press **Test**.
+Open `http://<host>:8000`, sign in with that password, add an MDM instance and
+press **Test**.
 
-`compose.yaml` pulls a prebuilt multi-arch image from GHCR. To build from source
-instead:
+`bootstrap.sh` just writes `.env`; do it by hand if you prefer:
+
+```bash
+cp .env.example .env
+printf 'SECRET_KEY=%s\n' "$(openssl rand -hex 32)" >> .env
+$EDITOR .env                  # set ADMIN_PASSWORD and TZ
+```
+
+**Keep `SECRET_KEY` safe and back it up with the data volume** — it encrypts
+your stored MDM credentials. Replacing it means re-entering every API
+credential.
+
+### Build from source instead
+
+`compose.yaml` pulls a prebuilt multi-arch image from GHCR. To build locally —
+also what you want if you're modifying the code:
 
 ```bash
 docker compose -f compose.dev.yaml up -d --build
 ```
 
+The Caddy sidecar is always built locally, because DNS-01 needs DNS provider
+modules compiled into the binary. First build takes a few minutes.
+
+### Upgrading
+
+```bash
+git pull
+docker compose pull && docker compose up -d          # prebuilt
+docker compose -f compose.dev.yaml up -d --build     # from source
+```
+
+Database migrations run at startup; there is nothing to apply by hand. Your
+schedules, run history, branding and credentials live in the `/data` volume and
+survive upgrades.
+
 ### Dockge / Portainer
 
-Clone the repo into your stacks directory (`/opt/stacks/mdm-scheduler`), create
-the `.env` beside `compose.yaml`, and deploy the stack. Dockge reads
-`compose.yaml` directly.
+Clone into your stacks directory and deploy the stack — Dockge reads
+`compose.yaml` directly:
+
+```bash
+cd /opt/stacks
+git clone https://github.com/kylejericson/mdm-scheduler.git
+cd mdm-scheduler && ./scripts/bootstrap.sh
+```
+
+Then refresh Dockge and start the `mdm-scheduler` stack. Portainer: point a Git
+stack at the repo and add `SECRET_KEY`, `ADMIN_PASSWORD` and `TZ` as stack
+environment variables instead of using `.env`.
+
+### What it publishes
+
+| Port | Serves |
+|---|---|
+| 8000 | The app directly, plain HTTP (handy on a LAN, and how you set HTTPS up in the first place) |
+| 80 | Caddy — HTTP, plus ACME HTTP-01 challenges |
+| 443 | Caddy — HTTPS once you enable it |
+
+Set `PORT`, `HTTP_PORT` or `HTTPS_PORT` in `.env` if any of those clash with
+something already on the host.
+
+## HTTPS
+
+The stack ships a Caddy sidecar that fronts the app. Turn on HTTPS under
+**Branding → HTTPS**: hostname, contact email, and how Let's Encrypt should
+validate you.
+
+| Challenge | What it needs | Exposure |
+|---|---|---|
+| HTTP-01 | Public A record for the hostname, inbound port 80 forwarded to the container | The console becomes reachable from the internet |
+| DNS-01 | A DNS API token for the zone | Nothing opened; host can stay on a private network |
+
+Let's Encrypt validates by fetching a file over the internet (HTTP-01) or by
+reading a TXT record (DNS-01). There is no offline or email-only validation —
+the contact email only receives expiry notices. For a tool that can wipe a
+fleet, DNS-01 plus a LAN-only host is the safer posture.
+
+DNS-01 providers built into the sidecar: **IONOS, Cloudflare, DigitalOcean,
+Hetzner, Linode, Vultr, deSEC, DuckDNS, Gandi**. These all authenticate with a
+single API token, which is what the form collects. Route 53, Azure, Google Cloud
+DNS, GoDaddy, OVH and Namecheap need several credential values and would need
+per-provider fields in the form before they could be offered.
+
+Saving reloads Caddy immediately over its admin API; renewal needs no cron.
+**Check certificate** does a real handshake and reports the issuer and days
+remaining, and **View generated config** shows the Caddyfile in use with the DNS
+token redacted. To add another DNS provider, add its module to
+`Dockerfile.caddy` and its name to `DNS_PROVIDERS` in `app/tls.py`.
+
+> The Caddy admin API is reachable only on the compose network and is never
+> published to the host — anything that can reach it can reconfigure the proxy.
 
 ## Branding
 
@@ -99,9 +180,10 @@ API tokens** and enable only what you schedule:
 | Permission | Needed for |
 |---|---|
 | Device list | Serial resolution, blueprint membership, the pre-flight check |
-| Blueprint list | The blueprint dropdowns |
-| Update device | Moving a device to another blueprint |
-| The device actions you use | Each action (lock, erase, restart, …) is its own permission |
+| List Blueprints | The blueprint dropdowns |
+| Get Blueprint | Naming source and destination blueprints in the run log |
+| Update Blueprint | Moving a device to another blueprint |
+| Device Actions | Each command is its own permission, named for what it does — `Send a blank push`, `Erase Device`, … |
 
 The Base URL is whatever Settings → Access shows —
 `https://yourtenant.api.kandji.io` (US) or `…api.eu.kandji.io` (EU).
