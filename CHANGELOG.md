@@ -1,5 +1,22 @@
 # Changelog
 
+## 3.0.1
+
+Packaging fixes. No behaviour change.
+
+- **`.env.example` documents the 3.0 settings.** All nine new variables - the
+  login throttle, recovery code count, audit retention and the three WebAuthn
+  ones - were missing, so the only place to discover them was the README.
+- The `SECRET_KEY` comment now says what it actually protects in 3.0: stored
+  credentials *and* TOTP secrets, so losing it also breaks every enrolled
+  authenticator app.
+- The `ADMIN_PASSWORD` comment explains that it creates the first account and
+  then stays a break-glass sign-in that skips MFA, with a pointer to the switch
+  that turns it off.
+- `scripts/deploy.sh` is in the tree. It was written for 3.0.0 but missed the
+  release tarball.
+
+
 ## 3.0.0
 
 Real accounts, two-factor authentication and an audit trail. If you are putting
@@ -78,6 +95,28 @@ documented way back in after a lost authenticator - and it is also a way past
 MFA for anyone who can read the container's environment. It is recorded as its
 own audit action, and there is a switch on the Users page to turn it off once
 your recovery codes are somewhere safe.
+
+### Deployment
+
+- `scripts/deploy.sh` ships a release to a Proxmox LXC from your workstation in
+  one command: backs up the data volume, `.env` and the current code, copies the
+  tarball via the Proxmox host, extracts, rebuilds, waits for `/health`, and
+  prints the exact rollback commands. It refuses a tarball containing a `.env`
+  or a database, and stops before changing anything if the backup fails.
+
+### Deployment
+
+- `scripts/deploy.sh` releases in one command from your workstation: backs up
+  the data volume, `.env` and the current code; copies the tarball via the
+  Proxmox host into the container; extracts, rebuilds and waits for `/health`;
+  then commits, tags `vX.Y.Z` and pushes to GitHub, which starts the release
+  workflow. Deploy runs before publish, so a tag never points at a build that
+  didn't start. `--no-git` and `--no-deploy` run either half alone.
+- It refuses a tarball containing a `.env` or a database, refuses a tag that
+  already exists locally or on the remote, stops before changing anything if
+  the backup fails, and scans the staged diff for high-entropy values assigned
+  to `SECRET_KEY`, `ADMIN_PASSWORD`, `API_TOKEN` or `CLIENT_SECRET` before
+  pushing.
 
 ### Also fixed
 

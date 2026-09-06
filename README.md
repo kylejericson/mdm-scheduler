@@ -89,6 +89,16 @@ modules compiled into the binary. First build takes a few minutes.
 
 ### Upgrading
 
+If you run the stack in a Proxmox LXC, `scripts/deploy.sh` does the whole
+three-machine dance from your workstation - backup, copy, extract, rebuild,
+health check - and prints the rollback commands at the end:
+
+```bash
+./scripts/deploy.sh ~/Downloads/mdm-scheduler-3.0.0.tar.gz
+```
+
+Otherwise:
+
 ```bash
 git pull
 docker compose pull && docker compose up -d          # prebuilt
