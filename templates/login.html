@@ -8,6 +8,8 @@
   {% include "_assets.html" %}
   <style>
     .brand-logo { max-height: 64px; max-width: 240px; width: auto; }
+    .divider { display: flex; align-items: center; gap: .75rem; color: var(--bs-secondary-color); }
+    .divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid var(--bs-border-color); }
     {% if brand.accent %}
     .btn-primary { --bs-btn-bg: {{ brand.accent }}; --bs-btn-border-color: {{ brand.accent }};
                    --bs-btn-hover-bg: {{ brand.accent }}; --bs-btn-hover-border-color: {{ brand.accent }}; }
@@ -25,13 +27,35 @@
   </div>
 
   {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+  <div class="alert alert-danger d-none" id="passkey-error"></div>
+
+  {% if no_accounts %}
+    <div class="alert alert-warning small">
+      No accounts exist yet. Sign in with the <code>ADMIN_PASSWORD</code> from the
+      container to create the first one.
+    </div>
+  {% endif %}
+
+  {% if passkeys_ok %}
+    <button class="btn btn-primary w-100 mb-3" type="button" id="passkey-btn">
+      Sign in with a passkey
+    </button>
+    <div class="divider small mb-3">or</div>
+  {% endif %}
 
   <form method="post" action="/login">
     <div class="mb-3">
-      <label class="form-label" for="password">Password</label>
-      <input class="form-control" type="password" id="password" name="password" autofocus required>
+      <label class="form-label" for="username">Username</label>
+      <input class="form-control" type="text" id="username" name="username"
+             autocomplete="username webauthn" autocapitalize="none" spellcheck="false" autofocus>
     </div>
-    <button class="btn btn-primary w-100" type="submit">Sign in</button>
+    <div class="mb-3">
+      <label class="form-label" for="password">Password</label>
+      <input class="form-control" type="password" id="password" name="password"
+             autocomplete="current-password" required>
+    </div>
+    <button class="btn {% if passkeys_ok %}btn-outline-primary{% else %}btn-primary{% endif %} w-100"
+            type="submit">Sign in</button>
   </form>
 
   <div class="d-flex justify-content-between align-items-center mt-3">
@@ -39,5 +63,28 @@
     {% include "_theme_toggle.html" %}
   </div>
 </div>
+
+{% include "_assets_js.html" %}
+<script src="/static/webauthn.js"></script>
+<script>
+const btn = document.getElementById('passkey-btn');
+if (btn) {
+  btn.addEventListener('click', async () => {
+    const box = document.getElementById('passkey-error');
+    box.classList.add('d-none');
+    btn.disabled = true;
+    btn.textContent = 'Waiting for your passkey...';
+    try {
+      const result = await passkeySignIn();
+      window.location = result.next || '/';
+    } catch (err) {
+      box.textContent = err.message;
+      box.classList.remove('d-none');
+      btn.disabled = false;
+      btn.textContent = 'Sign in with a passkey';
+    }
+  });
+}
+</script>
 </body>
 </html>

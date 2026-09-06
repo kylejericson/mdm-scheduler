@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Audit log &middot; {{ brand.title }}{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h4 mb-0">Audit log</h1>
+  <form class="d-flex gap-2" method="get" action="/audit">
+    <select class="form-select form-select-sm" name="actor" onchange="this.form.submit()">
+      <option value="">Everyone</option>
+      {% for name in actors %}
+        <option value="{{ name }}" {% if name == selected_actor %}selected{% endif %}>{{ name }}</option>
+      {% endfor %}
+    </select>
+    <select class="form-select form-select-sm" name="action" onchange="this.form.submit()">
+      <option value="">All actions</option>
+      {% for key, label in actions.items() %}
+        <option value="{{ key }}" {% if key == selected_action %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    {% if selected_action or selected_actor %}
+      <a class="btn btn-sm btn-outline-secondary" href="/audit">Clear</a>
+    {% endif %}
+  </form>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-sm align-middle">
+    <thead>
+      <tr><th>When</th><th>Who</th><th>Action</th><th>Target</th><th>Detail</th><th>From</th></tr>
+    </thead>
+    <tbody>
+      {% for event in events %}
+        <tr {% if event.action in ('break-glass', 'sign-in-failed') %}class="table-warning"{% endif %}>
+          <td class="small text-nowrap">{{ event.ts|localtime(default_tz) }}</td>
+          <td class="small">{{ event.actor }}</td>
+          <td class="small">{{ actions.get(event.action, event.action) }}</td>
+          <td class="small">
+            {% if event.target %}
+              <span class="text-secondary">{{ event.target_type }}</span> {{ event.target }}
+            {% endif %}
+          </td>
+          <td class="small params">{{ event.detail }}</td>
+          <td class="small mono">{{ event.ip }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="text-secondary">Nothing recorded yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<p class="text-secondary small">
+  Showing the most recent {{ events|length }} entries. The actor's username is stored on
+  each row rather than linked, so deleting an account doesn't erase what it did.
+</p>
+{% endblock %}

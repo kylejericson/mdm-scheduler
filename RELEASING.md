@@ -6,16 +6,16 @@ Maintainer notes. Users don't need this.
 
 ```bash
 # version lives in one place
-$EDITOR app/__init__.py      # __version__ = "2.3.2"
+$EDITOR app/__init__.py      # __version__ = "3.0.0"
 $EDITOR CHANGELOG.md         # add the section
 
-git commit -am "Release 2.3.2"
-git tag v2.3.2
+git commit -am "Release 3.0.0"
+git tag v3.0.0
 git push && git push --tags
 ```
 
 The `Release` workflow builds `linux/amd64` and `linux/arm64` and pushes to
-`ghcr.io/<owner>/<repo>` tagged `2.3.2`, `2.3`, and `latest`.
+`ghcr.io/<owner>/<repo>` tagged `3.0.0`, `2.3`, and `latest`.
 
 ## One-time: make the package public
 

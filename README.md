@@ -35,7 +35,8 @@ actual policies and groups, and a scheduler that runs the change when you said.
 | **Live discovery** | Dropdowns are populated from the selected instance's real policies, profiles and groups |
 | **Scheduling** | One-shot datetime or 5-field cron, each with its own timezone |
 | **Auditing** | Per-job run log with the Jamf response or the exact error, last 500 runs |
-| **Auth on the UI** | Single password; Jamf credentials Fernet-encrypted at rest |
+| **Accounts** | Named users with roles (admin / operator / viewer), passkeys and TOTP, single-use recovery codes, server-side sessions you can revoke, login throttling |
+| **Audit log** | Who created, edited, ran or deleted each job; sign-ins, factor changes and settings changes, with source address |
 | **Org branding** | Your logo, name and accent color in the header and on the sign-in page |
 | **Light / dark** | Per-viewer toggle, org-level default, OS fallback |
 | **Iru blueprints** | Move devices into a blueprint by serial number, or move everything out of one; Iru has no unassign, so moving is the mechanism |
@@ -55,8 +56,12 @@ cd mdm-scheduler
 docker compose up -d
 ```
 
-Open `http://<host>:8000`, sign in with that password, add an MDM instance and
-press **Test**.
+Open `http://<host>:8000` and sign in as **admin** with that password. Add an MDM
+instance, press **Test**, then head to **Users** to create real accounts and turn
+on MFA.
+
+Upgrading from 2.x? Your `ADMIN_PASSWORD` becomes the `admin` account on first
+boot - nothing to migrate, and nothing stops working.
 
 `bootstrap.sh` just writes `.env`; do it by hand if you prefer:
 
@@ -151,6 +156,25 @@ token redacted. To add another DNS provider, add its module to
 > The Caddy admin API is reachable only on the compose network and is never
 > published to the host — anything that can reach it can reconfigure the proxy.
 
+## Accounts
+
+**Users** (admin only) creates accounts and sets roles:
+
+| Role | Can |
+|---|---|
+| **Admin** | Everything - users, MDM instances, credentials, settings, HTTPS |
+| **Operator** | Create, edit and run jobs. Never sees an API credential |
+| **Viewer** | Read the dashboard and run logs |
+
+Each user manages their own factors under **Your account**: passkeys, an
+authenticator app, recovery codes, and the list of their active sessions.
+
+Admins can reset a password, clear a lost second factor, sign someone out
+everywhere, or disable an account - and can require MFA for everyone, which
+holds accounts without a factor on their account page until they enrol.
+
+The **Audit** page records who did what, with source addresses.
+
 ## Branding
 
 **Branding** in the header sets the org name, accent color, logo, default theme
@@ -163,7 +187,12 @@ restricted by content type and capped at 2 MB (`MAX_LOGO_BYTES`).
 | Variable | Default | Notes |
 |---|---|---|
 | `SECRET_KEY` | *required* | Encrypts stored Jamf credentials, signs session cookies. `openssl rand -hex 32`. Changing it makes stored credentials unreadable |
-| `ADMIN_PASSWORD` | *required* | The UI password. No username |
+| `ADMIN_PASSWORD` | *required* | Creates the first `admin` account, and remains a break-glass sign-in that skips MFA. Turn that off under Users once you have recovery codes |
+| `LOGIN_MAX_FAILURES` | `5` | Failed sign-ins per account before a temporary lockout |
+| `IP_MAX_FAILURES` | `20` | Failed sign-ins per source IP in the same window |
+| `LOGIN_LOCKOUT_SECONDS` | `900` | How long a locked account stays locked |
+| `WEBAUTHN_RP_ID` | *derived* | Domain passkeys bind to. Defaults to your HTTPS hostname; changing it invalidates every registered passkey |
+| `AUDIT_RETENTION` | `10000` | Audit rows kept |
 | `TZ` | `UTC` | Default timezone for new schedules and dashboard timestamps |
 | `PORT` | `8000` | Host port |
 | `DATA_DIR` | `/data` | Where the SQLite database lives; mount it as a volume |
@@ -291,6 +320,11 @@ and rendered in each job's timezone.
   history stays visible. **Run now** never auto-pauses.
 - **Missed runs** (container down at fire time) execute on startup within a
   1-hour misfire grace window, then are skipped.
+- **Passkeys are bound to a hostname.** One registered at `mdm.example.com` will
+  not work at `http://192.168.1.10:8000` - that is what makes them unphishable.
+  TOTP covers the LAN address.
+- **Break-glass is on by default.** `ADMIN_PASSWORD` signs in as `admin` and
+  skips MFA. Turn it off under Users once your recovery codes are saved.
 - **This tool can wipe your fleet.** See [SECURITY.md](SECURITY.md) before
   exposing it anywhere.
 

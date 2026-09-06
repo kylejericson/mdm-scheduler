@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verify &middot; {{ brand.title }}</title>
+  {% include "_theme.html" %}
+  {% include "_assets.html" %}
+  <style>
+    .brand-logo { max-height: 64px; max-width: 240px; width: auto; }
+    .divider { display: flex; align-items: center; gap: .75rem; color: var(--bs-secondary-color); }
+    .divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid var(--bs-border-color); }
+    {% if brand.accent %}
+    .btn-primary { --bs-btn-bg: {{ brand.accent }}; --bs-btn-border-color: {{ brand.accent }}; }
+    a { color: {{ brand.accent }}; }
+    {% endif %}
+  </style>
+</head>
+<body class="d-flex align-items-center" style="min-height:100vh">
+<div class="container" style="max-width: 24rem">
+  <div class="text-center mb-4">
+    {% if brand.logo_file %}
+      <img class="brand-logo mb-3" src="/branding/logo" alt="{{ brand.org_name or 'Logo' }}">
+    {% endif %}
+    <h1 class="h5 mb-1">Verify it's you</h1>
+    <p class="text-secondary small mb-0">Signed in as {{ pending['username'] }}</p>
+  </div>
+
+  {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+  <div class="alert alert-danger d-none" id="passkey-error"></div>
+
+  {% if has_passkey and passkeys_ok %}
+    <button class="btn btn-primary w-100 mb-3" type="button" id="passkey-btn">Use a passkey</button>
+    {% if has_totp %}<div class="divider small mb-3">or</div>{% endif %}
+  {% elif has_passkey and not passkeys_ok %}
+    <div class="alert alert-secondary small">
+      You have a passkey, but it can't be used from this address.
+      {{ passkeys_why if passkeys_why }}
+    </div>
+  {% endif %}
+
+  {% if has_totp %}
+    <form method="post" action="/login/mfa">
+      <div class="mb-3">
+        <label class="form-label" for="code">Authenticator code</label>
+        <input class="form-control form-control-lg text-center" type="text" id="code" name="code"
+               inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code"
+               autofocus required>
+      </div>
+      <button class="btn {% if has_passkey and passkeys_ok %}btn-outline-primary{% else %}btn-primary{% endif %} w-100"
+              type="submit">Verify</button>
+    </form>
+  {% endif %}
+
+  <details class="mt-3">
+    <summary class="small text-secondary">Lost your device?</summary>
+    <form method="post" action="/login/mfa" class="mt-2">
+      <label class="form-label small" for="recovery">Recovery code</label>
+      <input class="form-control mono" type="text" id="recovery" name="recovery"
+             placeholder="xxxxx-xxxxx-xxxxx" autocomplete="off" spellcheck="false">
+      <button class="btn btn-outline-secondary btn-sm w-100 mt-2" type="submit">
+        Use a recovery code
+      </button>
+      <p class="form-text">
+        Each code works once. If you have none left, an admin can clear your factors so you
+        can enrol again.
+      </p>
+    </form>
+  </details>
+
+  <div class="d-flex justify-content-between align-items-center mt-3">
+    <a class="small" href="/login">Start over</a>
+    {% include "_theme_toggle.html" %}
+  </div>
+</div>
+
+{% include "_assets_js.html" %}
+<script src="/static/webauthn.js"></script>
+<script>
+const btn = document.getElementById('passkey-btn');
+if (btn) {
+  btn.addEventListener('click', async () => {
+    const box = document.getElementById('passkey-error');
+    box.classList.add('d-none');
+    btn.disabled = true;
+    btn.textContent = 'Waiting for your passkey...';
+    try {
+      const result = await passkeySignIn();
+      window.location = result.next || '/';
+    } catch (err) {
+      box.textContent = err.message;
+      box.classList.remove('d-none');
+      btn.disabled = false;
+      btn.textContent = 'Use a passkey';
+    }
+  });
+}
+</script>
+</body>
+</html>

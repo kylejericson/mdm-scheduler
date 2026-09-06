@@ -13,6 +13,7 @@ data/
 install.sh
 .DS_Store
 
-# UI assets are vendored into the image at build time, not committed
-static/*.css
-static/*.js
+# Bootstrap is vendored into the image at build time, not committed.
+# Only those two files - app JavaScript in static/ is source.
+static/bootstrap.min.css
+static/bootstrap.bundle.min.js

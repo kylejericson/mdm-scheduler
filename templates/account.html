@@ -1,0 +1,251 @@
+{% extends "base.html" %}
+{% block title %}Your account &middot; {{ brand.title }}{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h4 mb-0">Your account</h1>
+  <span class="badge text-bg-secondary">{{ account.role }}</span>
+</div>
+
+{% if enroll %}
+  <div class="alert alert-warning">
+    <strong>Two-factor authentication is required.</strong>
+    Register a passkey or an authenticator app below to carry on.
+  </div>
+{% endif %}
+
+{% if account.must_change_password %}
+  <div class="alert alert-warning">
+    This account is still on the password it was created with. Change it below.
+  </div>
+{% endif %}
+
+{% if new_codes %}
+  <div class="card border-success mb-4">
+    <div class="card-header bg-success-subtle">Recovery codes &mdash; shown once</div>
+    <div class="card-body">
+      <p class="card-text">
+        Save these somewhere you can reach <em>without</em> the device holding your other
+        factor. Each one works exactly once. They are stored hashed, so nobody &mdash;
+        including an admin &mdash; can show them to you again.
+      </p>
+      <pre class="mono mb-3 p-3 bg-body-tertiary rounded">{% for code in new_codes %}{{ code }}
+{% endfor %}</pre>
+      <button class="btn btn-sm btn-outline-secondary" type="button"
+              onclick="navigator.clipboard.writeText(this.parentElement.querySelector('pre').textContent.trim())">
+        Copy to clipboard
+      </button>
+    </div>
+  </div>
+{% endif %}
+
+<div class="row g-4">
+  <div class="col-lg-6">
+
+    <!-- passkeys -->
+    <div class="card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Passkeys</span>
+        {% if credentials %}<span class="badge text-bg-success">On</span>{% endif %}
+      </div>
+      <div class="card-body">
+        <p class="card-text small text-secondary">
+          Touch ID, Windows Hello, or a hardware key. Phishing-resistant, because the
+          credential only works on <span class="mono">{{ rp_id or 'this host' }}</span> &mdash;
+          a look-alike site cannot ask for it.
+        </p>
+
+        {% if credentials %}
+          <ul class="list-group list-group-flush mb-3">
+            {% for cred in credentials %}
+              <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                <span>
+                  {{ cred.name or 'Passkey' }}
+                  <span class="d-block small text-secondary">
+                    Added {{ cred.created_at|localtime(default_tz) }}
+                    {%- if cred.last_used_at %} &middot; last used {{ cred.last_used_at|localtime(default_tz) }}{% endif %}
+                    {%- if cred.rp_id %} &middot; {{ cred.rp_id }}{% endif %}
+                  </span>
+                </span>
+                <form method="post" action="/account/passkeys/{{ cred.id }}/delete">
+                  <button class="btn btn-sm btn-outline-danger" type="submit">Remove</button>
+                </form>
+              </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+
+        {% if passkeys_ok %}
+          <div class="alert alert-danger d-none" id="pk-error"></div>
+          <div class="input-group">
+            <input class="form-control" id="pk-name" placeholder="Name this device, e.g. work laptop">
+            <button class="btn btn-primary" type="button" id="pk-add">Register a passkey</button>
+          </div>
+        {% else %}
+          <div class="alert alert-secondary small mb-0">{{ passkeys_why }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- totp -->
+    <div class="card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Authenticator app</span>
+        {% if has_totp %}<span class="badge text-bg-success">On</span>{% endif %}
+      </div>
+      <div class="card-body">
+        {% if has_totp %}
+          <p class="card-text small text-secondary">
+            A time-based code from your authenticator app. Works from any address,
+            including the plain-HTTP LAN one where passkeys can't be used.
+          </p>
+          <form method="post" action="/account/totp/remove">
+            <button class="btn btn-sm btn-outline-danger" type="submit">Remove</button>
+          </form>
+        {% elif totp_qr %}
+          <p class="card-text small">Scan this, then enter the 6-digit code to confirm.</p>
+          <img src="{{ totp_qr }}" alt="TOTP QR code" class="mb-3" style="width:200px;height:200px">
+          <details class="mb-3">
+            <summary class="small text-secondary">Can't scan it?</summary>
+            <p class="mono small mt-2 mb-0 text-break">{{ account.totp_secret }}</p>
+          </details>
+          <form method="post" action="/account/totp/confirm" class="input-group">
+            <input class="form-control" name="code" inputmode="numeric" maxlength="6"
+                   placeholder="000000" autocomplete="one-time-code" required>
+            <button class="btn btn-primary" type="submit">Confirm</button>
+          </form>
+        {% else %}
+          <p class="card-text small text-secondary">
+            A 6-digit code from an app such as 1Password, Authy or Google Authenticator.
+          </p>
+          <form method="post" action="/account/totp/begin">
+            <button class="btn btn-outline-primary" type="submit">Set up</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- recovery codes -->
+    <div class="card mb-4">
+      <div class="card-header">Recovery codes</div>
+      <div class="card-body">
+        <p class="card-text small text-secondary">
+          {% if has_mfa %}
+            {{ recovery_left }} unused code(s). Generating a new set invalidates the old one.
+          {% else %}
+            Recovery codes are generated when you add your first factor.
+          {% endif %}
+        </p>
+        {% if has_mfa %}
+          <form method="post" action="/account/recovery/regenerate">
+            <button class="btn btn-sm btn-outline-secondary" type="submit">
+              Generate a new set
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+
+    <!-- password -->
+    <div class="card mb-4">
+      <div class="card-header">Password</div>
+      <div class="card-body">
+        <form method="post" action="/account/password">
+          <div class="mb-3">
+            <label class="form-label" for="current">Current password</label>
+            <input class="form-control" type="password" id="current" name="current"
+                   autocomplete="current-password" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="new_password">New password</label>
+            <input class="form-control" type="password" id="new_password" name="new_password"
+                   autocomplete="new-password" minlength="12" required>
+            <div class="form-text">
+              At least 12 characters. Length is the only rule &mdash; a passphrase beats
+              a short password with punctuation in it.
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="confirm">Confirm</label>
+            <input class="form-control" type="password" id="confirm" name="confirm"
+                   autocomplete="new-password" required>
+          </div>
+          <button class="btn btn-primary" type="submit">Change password</button>
+          <div class="form-text">Your other sessions will be signed out.</div>
+        </form>
+      </div>
+    </div>
+
+    <!-- sessions -->
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Active sessions</span>
+        {% if sessions|length > 1 %}
+          <form method="post" action="/account/sessions/revoke-others">
+            <button class="btn btn-sm btn-outline-danger" type="submit">Sign out the others</button>
+          </form>
+        {% endif %}
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead>
+            <tr><th>Started</th><th>Last seen</th><th>Address</th><th>How</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for s in sessions %}
+              <tr {% if s.id == this_session %}class="table-active"{% endif %}>
+                <td class="small">{{ s.created_at|localtime(default_tz) }}</td>
+                <td class="small">{{ s.last_seen_at|localtime(default_tz) }}</td>
+                <td class="small mono">{{ s.ip or '-' }}</td>
+                <td class="small">
+                  {{ s.method }}
+                  {% if s.id == this_session %}<span class="badge text-bg-secondary">this one</span>{% endif %}
+                </td>
+                <td class="text-end">
+                  <form method="post" action="/account/sessions/{{ s.id }}/revoke">
+                    <button class="btn btn-sm btn-outline-danger" type="submit">
+                      {% if s.id == this_session %}Sign out{% else %}Revoke{% endif %}
+                    </button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="card-footer small text-secondary">
+        User agents are recorded but not shown &mdash; they identify browsers, not people,
+        and the address plus timing is what tells you whether a session is yours.
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/webauthn.js"></script>
+<script>
+const add = document.getElementById('pk-add');
+if (add) {
+  add.addEventListener('click', async () => {
+    const box = document.getElementById('pk-error');
+    const name = document.getElementById('pk-name').value.trim() || 'Passkey';
+    box.classList.add('d-none');
+    add.disabled = true;
+    add.textContent = 'Waiting...';
+    try {
+      await passkeyRegister(name);
+      window.location.reload();
+    } catch (err) {
+      box.textContent = err.message;
+      box.classList.remove('d-none');
+      add.disabled = false;
+      add.textContent = 'Register a passkey';
+    }
+  });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}Users &middot; {{ brand.title }}{% endblock %}
+{% block content %}
+
+<h1 class="h4 mb-3">Users</h1>
+
+{% if without_mfa %}
+  <div class="alert alert-warning">
+    No second factor on: {{ without_mfa|join(', ') }}.
+    {% if not settings.require_mfa %}
+      Turning on <strong>Require MFA</strong> below holds each of them on their account
+      page until they enrol.
+    {% endif %}
+  </div>
+{% endif %}
+
+<div class="table-responsive mb-4">
+  <table class="table align-middle">
+    <thead>
+      <tr>
+        <th>User</th><th>Role</th><th>Factors</th><th>Sessions</th><th>Last sign-in</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+        {% set u = row.user %}
+        <tr {% if not u.is_active %}class="opacity-50"{% endif %}>
+          <td>
+            <strong>{{ u.username }}</strong>
+            {% if not u.is_active %}<span class="badge text-bg-secondary">disabled</span>{% endif %}
+            {% if u.must_change_password %}
+              <span class="badge text-bg-warning">initial password</span>
+            {% endif %}
+            <span class="d-block small text-secondary">
+              {{ u.display_name }}{% if u.email %} &middot; {{ u.email }}{% endif %}
+            </span>
+          </td>
+          <td>{{ u.role }}</td>
+          <td class="small">
+            {% if row.passkeys %}<span class="badge text-bg-success">{{ row.passkeys }} passkey(s)</span>{% endif %}
+            {% if u.has_totp %}<span class="badge text-bg-success">app</span>{% endif %}
+            {% if not u.has_mfa %}<span class="badge text-bg-warning">none</span>{% endif %}
+            {% if u.has_mfa %}<span class="text-secondary">{{ row.recovery }} recovery</span>{% endif %}
+          </td>
+          <td class="small">{{ row.sessions }}</td>
+          <td class="small">{{ u.last_login_at|localtime(default_tz) }}</td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse"
+                    data-bs-target="#user-{{ u.id }}">Manage</button>
+          </td>
+        </tr>
+        <tr class="collapse" id="user-{{ u.id }}">
+          <td colspan="6" class="bg-body-tertiary">
+            <div class="row g-4 py-2">
+              <div class="col-lg-5">
+                <form method="post" action="/users/{{ u.id }}">
+                  <div class="mb-2">
+                    <label class="form-label small" for="dn-{{ u.id }}">Display name</label>
+                    <input class="form-control form-control-sm" id="dn-{{ u.id }}"
+                           name="display_name" value="{{ u.display_name }}">
+                  </div>
+                  <div class="mb-2">
+                    <label class="form-label small" for="em-{{ u.id }}">Email</label>
+                    <input class="form-control form-control-sm" id="em-{{ u.id }}"
+                           name="email" value="{{ u.email }}">
+                  </div>
+                  <div class="mb-2">
+                    <label class="form-label small" for="role-{{ u.id }}">Role</label>
+                    <select class="form-select form-select-sm" id="role-{{ u.id }}" name="role">
+                      {% for key, label in roles.items() %}
+                        <option value="{{ key }}" {% if u.role == key %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="act-{{ u.id }}"
+                           name="is_active" {% if u.is_active %}checked{% endif %}>
+                    <label class="form-check-label small" for="act-{{ u.id }}">
+                      Active &mdash; unticking signs out every session
+                    </label>
+                  </div>
+                  <button class="btn btn-sm btn-primary" type="submit">Save</button>
+                </form>
+              </div>
+
+              <div class="col-lg-4">
+                <form method="post" action="/users/{{ u.id }}/password">
+                  <label class="form-label small" for="pw-{{ u.id }}">Set a new password</label>
+                  <div class="input-group input-group-sm">
+                    <input class="form-control" type="password" id="pw-{{ u.id }}"
+                           name="password" minlength="12" required>
+                    <button class="btn btn-outline-secondary" type="submit">Reset</button>
+                  </div>
+                  <div class="form-text">
+                    Signs out their sessions and asks them to change it.
+                  </div>
+                </form>
+              </div>
+
+              <div class="col-lg-3 d-flex flex-column gap-2">
+                <form method="post" action="/users/{{ u.id }}/clear-mfa">
+                  <button class="btn btn-sm btn-outline-warning w-100" type="submit">
+                    Clear all factors
+                  </button>
+                  <div class="form-text">The lost-phone fix. They re-enrol at next sign-in.</div>
+                </form>
+                <form method="post" action="/users/{{ u.id }}/revoke-sessions">
+                  <button class="btn btn-sm btn-outline-secondary w-100" type="submit">
+                    Sign out everywhere
+                  </button>
+                </form>
+                <form method="post" action="/users/{{ u.id }}/delete"
+                      onsubmit="return confirm('Delete {{ u.username }}? Their audit history is kept.')">
+                  <button class="btn btn-sm btn-outline-danger w-100" type="submit">Delete user</button>
+                </form>
+              </div>
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">Add a user</div>
+      <div class="card-body">
+        <form method="post" action="/users">
+          <div class="row g-2">
+            <div class="col-md-6 mb-2">
+              <label class="form-label small" for="username">Username</label>
+              <input class="form-control" id="username" name="username" required
+                     autocapitalize="none" spellcheck="false">
+            </div>
+            <div class="col-md-6 mb-2">
+              <label class="form-label small" for="display_name">Display name</label>
+              <input class="form-control" id="display_name" name="display_name">
+            </div>
+            <div class="col-md-6 mb-2">
+              <label class="form-label small" for="email">Email</label>
+              <input class="form-control" type="email" id="email" name="email">
+            </div>
+            <div class="col-md-6 mb-2">
+              <label class="form-label small" for="role">Role</label>
+              <select class="form-select" id="role" name="role">
+                {% for key, label in roles.items() %}
+                  <option value="{{ key }}" {% if key == 'operator' %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12 mb-2">
+              <label class="form-label small" for="password">Initial password</label>
+              <input class="form-control" type="password" id="password" name="password"
+                     minlength="12" required>
+              <div class="form-text">
+                At least 12 characters. They'll be prompted to change it, and you should
+                send it to them over something other than email.
+              </div>
+            </div>
+          </div>
+          <button class="btn btn-primary" type="submit">Create user</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">Security policy</div>
+      <div class="card-body">
+        <form method="post" action="/security">
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="require_mfa" name="require_mfa"
+                   {% if settings.require_mfa %}checked{% endif %}>
+            <label class="form-check-label" for="require_mfa">Require MFA for every account</label>
+            <div class="form-text">
+              Accounts without a factor can reach their own account page and nothing else
+              until they register one.
+            </div>
+          </div>
+
+          <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="break_glass_enabled"
+                   name="break_glass_enabled" {% if settings.break_glass_enabled %}checked{% endif %}>
+            <label class="form-check-label" for="break_glass_enabled">
+              Allow break-glass sign-in with <span class="mono">ADMIN_PASSWORD</span>
+            </label>
+            <div class="form-text">
+              {% if break_glass_available %}
+                The container's <span class="mono">ADMIN_PASSWORD</span> signs in as
+                <strong>admin</strong>, skipping MFA. That is how you get back in after a
+                lost authenticator &mdash; and it is also a way past MFA for anyone who
+                can read your environment. Once your recovery codes are somewhere safe,
+                turn this off.
+              {% else %}
+                No <span class="mono">ADMIN_PASSWORD</span> is set on the container, so
+                this does nothing. Recovery codes are your way back in.
+              {% endif %}
+            </div>
+          </div>
+
+          <button class="btn btn-primary" type="submit">Save policy</button>
+        </form>
+      </div>
+      {% if settings.break_glass_enabled and break_glass_available %}
+        <div class="card-footer small text-secondary">
+          Every break-glass sign-in is recorded in the <a href="/audit?action=break-glass">audit log</a>.
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

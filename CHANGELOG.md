@@ -1,5 +1,98 @@
 # Changelog
 
+## 3.0.0
+
+Real accounts, two-factor authentication and an audit trail. If you are putting
+this on the public internet, this is the release that makes that defensible.
+
+**Upgrading is automatic and nothing is lost.** On first boot the existing
+`ADMIN_PASSWORD` becomes an `admin` account with that same password, so an
+existing install keeps working with no action. See "Break-glass" below for the
+one thing worth turning off afterwards.
+
+### Accounts and roles
+
+- **Named user accounts**, each with its own password (Argon2id) and its own
+  sessions, so sign-ins are attributable and individually revocable.
+- **Three roles.** *Admin* manages users, MDM instances and settings. *Operator*
+  creates and runs jobs but never sees credentials. *Viewer* reads dashboards
+  and run logs. Enforcement is a single policy function rather than per-route
+  decorators, so a new route is covered by default instead of exposed by
+  omission.
+- Admins can reset a password, clear a lost second factor, disable an account,
+  or sign someone out everywhere. The last active admin cannot be demoted,
+  disabled or deleted.
+
+### Two factors
+
+- **Passkeys (WebAuthn).** Touch ID, Windows Hello, hardware keys. Either as a
+  one-step sign-in - the authenticator verifies the user locally, so it is
+  already two factors - or as a second step after a password. Several per
+  account, each named, each removable. Registered as discoverable credentials,
+  so "Sign in with a passkey" needs no username.
+- **Authenticator apps (TOTP)**, enrolled from a QR code rendered by the app
+  itself. No CDN, and the secret never passes through third-party JavaScript.
+- **Recovery codes**, ten per account, single-use, stored hashed. Issued when
+  the first factor is added.
+- **Require MFA** is an admin setting: accounts without a factor can reach their
+  own account page and nothing else until they enrol.
+- Passkeys are bound to a domain, so they work on your HTTPS hostname and not on
+  the plain-HTTP LAN address. The UI says so rather than failing silently, and
+  TOTP covers that case.
+
+### Hardening
+
+- **Login throttling.** Failures are counted per account and per source IP over
+  the same window - the first stops someone grinding one password, the second
+  stops a spray across many usernames - with a temporary lockout after five
+  account failures. `X-Forwarded-For` is trusted only when the peer is the
+  Caddy sidecar, since port 8000 is directly reachable and the header is
+  trivially forged.
+- **Server-side sessions.** The cookie carries a random token; only its SHA-256
+  is stored. Sessions can be listed and revoked - by their owner, or by an
+  admin for anyone - which a signed cookie alone can never be. Changing a
+  password or disabling an account signs out every other session.
+- **TOTP codes cannot be replayed.** The time step a code came from is recorded
+  and never accepted twice, so a code seen over someone's shoulder is useless
+  the moment it is used.
+- **A regressed passkey counter is treated as a cloned authenticator** and
+  refused, with an explanation rather than the library's arithmetic.
+- Failed sign-ins say the same thing whether or not the account exists, so the
+  form is not a username oracle.
+
+### Audit log
+
+- Every sign-in, failed sign-in, sign-out, user change, factor change, session
+  revocation, instance change, settings change and job create/edit/delete/run
+  is recorded with actor, target, detail and source address. Filterable by
+  actor and action.
+- The actor's username is copied onto each row rather than joined, so deleting
+  a user does not erase the record of what they did.
+- `job-run` is written before the run starts, so a job that hangs still shows
+  who set it going.
+
+### Break-glass
+
+`ADMIN_PASSWORD` continues to sign in as `admin`, bypassing MFA. That is the
+documented way back in after a lost authenticator - and it is also a way past
+MFA for anyone who can read the container's environment. It is recorded as its
+own audit action, and there is a switch on the Users page to turn it off once
+your recovery codes are somewhere safe.
+
+### Also fixed
+
+- **TOTP codes no longer depend on the container's timezone.** pyotp derives the
+  counter from local wall-clock time for naive datetimes, so a container with
+  `TZ` set to anything but UTC would have generated codes that disagreed with
+  every real authenticator app. Verification now passes explicitly UTC-aware
+  timestamps.
+- The empty-state redirect on "New job" used to send operators to the instance
+  form, which they cannot open - a redirect straight into a 403. They now get
+  the dashboard and a message.
+- `static/*.js` is no longer git-ignored. Only the two vendored Bootstrap files
+  are, so app JavaScript is tracked like the source it is.
+
+
 ## 2.3.2
 
 - **Fixed: restarting the Caddy container silently turned HTTPS off.** The

@@ -5,6 +5,12 @@ python-multipart==0.0.20
 httpx==0.28.1
 SQLAlchemy==2.0.36
 APScheduler==3.11.0
-cryptography==44.0.0
+cryptography==50.0.1
 itsdangerous==2.2.0
 tzdata==2024.2
+
+# Accounts, MFA and passkeys
+argon2-cffi==25.1.0
+pyotp==2.10.0
+webauthn==3.0.0
+segno==1.6.6
